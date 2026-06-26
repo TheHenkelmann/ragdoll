@@ -1,7 +1,13 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+unmaintained = "workspace"
+unsound = "workspace"
 yanked = "warn"
+ignore = [
+    { id = "RUSTSEC-2026-0049", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
+    { id = "RUSTSEC-2026-0098", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
+    { id = "RUSTSEC-2026-0099", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
+    { id = "RUSTSEC-2026-0104", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
+]
 
 [licenses]
 allow = [
@@ -13,9 +19,12 @@ allow = [
     "Unicode-3.0",
     "Zlib",
     "AGPL-3.0",
+    "AGPL-3.0-only",
     "MPL-2.0",
     "OpenSSL",
     "CC0-1.0",
+    "NCSA",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
