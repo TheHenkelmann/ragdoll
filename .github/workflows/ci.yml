@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy, llvm-tools-preview
@@ -40,7 +40,7 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
         with:
@@ -63,7 +63,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -83,5 +83,5 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build -f docker/Dockerfile -t ragdoll:ci .
