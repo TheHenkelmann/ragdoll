@@ -68,7 +68,6 @@ pub struct QueryOptions {
     pub playground: bool,
 }
 
-
 pub struct SearchPipeline {
     pub pool: DbPool,
     pub models: Arc<dyn ModelProvider>,

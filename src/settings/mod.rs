@@ -22,7 +22,6 @@ pub enum PayloadStorage {
     Forbidden,
 }
 
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeSettings {
     pub embedding_model: String,
