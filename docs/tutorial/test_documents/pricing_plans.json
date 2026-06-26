@@ -1,0 +1,58 @@
+{
+  "product": "Lumen Insights Platform",
+  "currency": "EUR",
+  "effective_date": "2026-01-01",
+  "billing_options": ["monthly", "annual"],
+  "annual_discount_months": 2,
+  "plans": [
+    {
+      "name": "Starter",
+      "price_per_month": 49,
+      "data_retention_days": 30,
+      "included_users": 3,
+      "api_rate_limit_per_minute": 60,
+      "support": "Email",
+      "features": ["Dashboards", "CSV upload", "REST API"],
+      "best_for": "Small projects and individuals trying out the platform"
+    },
+    {
+      "name": "Team",
+      "price_per_month": 199,
+      "data_retention_days": 180,
+      "included_users": 15,
+      "api_rate_limit_per_minute": 600,
+      "support": "Email and chat",
+      "features": [
+        "Shared dashboards",
+        "Webhooks",
+        "BI integration",
+        "REST API",
+        "Community forum"
+      ],
+      "best_for": "Growing teams that need collaboration and automation"
+    },
+    {
+      "name": "Enterprise",
+      "price_per_month": null,
+      "pricing_model": "custom",
+      "data_retention_days": 730,
+      "included_users": "unlimited",
+      "api_rate_limit_per_minute": "negotiable",
+      "support": "24/7 emergency phone support",
+      "sla_availability_percent": 99.9,
+      "features": [
+        "Single sign-on",
+        "Dedicated support team",
+        "Guaranteed SLA",
+        "Named customer-success manager",
+        "Security whitepapers under NDA"
+      ],
+      "best_for": "Large organizations with strict security and uptime needs"
+    }
+  ],
+  "notes": [
+    "Upgrades take effect immediately and are prorated.",
+    "Downgrades take effect at the start of the next billing period.",
+    "All plans can export data as CSV and JSON at any time."
+  ]
+}

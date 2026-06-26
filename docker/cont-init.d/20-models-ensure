@@ -1,0 +1,3 @@
+#!/command/with-contenv bash
+set -euo pipefail
+ragdoll models-ensure

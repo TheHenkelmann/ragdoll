@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Ragdoll on AWS App Runner (single instance, EFS-backed /data)
+
+Parameters:
+  JwtSecretOverride:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional override for RAGDOLL_JWT_SECRET. Leave empty to auto-generate an ephemeral secret (not stored for you).
+  SourceImage:
+    Type: String
+    Default: ghcr.io/thehenkelmann/ragdoll:latest
+    Description: Upstream image mirrored into ECR by the deploy script
+
+Conditions:
+  UseJwtSecretOverride: !Not [!Equals [!Ref JwtSecretOverride, ""]]
+
+Resources:
+  RagdollRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: ragdoll
+
+  RagdollVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  RagdollSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref RagdollVpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: true
+
+  RagdollSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref RagdollVpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: 10.42.2.0/24
+      MapPublicIpOnLaunch: true
+
+  RagdollFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+
+  RagdollMountTargetA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref RagdollFileSystem
+      SubnetId: !Ref RagdollSubnetA
+      SecurityGroups:
+        - !Ref RagdollEfsSecurityGroup
+
+  RagdollMountTargetB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref RagdollFileSystem
+      SubnetId: !Ref RagdollSubnetB
+      SecurityGroups:
+        - !Ref RagdollEfsSecurityGroup
+
+  RagdollEfsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS from App Runner VPC
+      VpcId: !Ref RagdollVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          CidrIp: 10.42.0.0/16
+
+  RagdollVpcConnector:
+    Type: AWS::AppRunner::VpcConnector
+    Properties:
+      VpcConnectorName: ragdoll-vpc-connector
+      Subnets:
+        - !Ref RagdollSubnetA
+        - !Ref RagdollSubnetB
+      SecurityGroups:
+        - !Ref RagdollEfsSecurityGroup
+
+  RagdollAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+  RagdollInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+
+  RagdollService:
+    Type: AWS::AppRunner::Service
+    DependsOn:
+      - RagdollMountTargetA
+      - RagdollMountTargetB
+    Properties:
+      ServiceName: ragdoll
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt RagdollAccessRole.Arn
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/ragdoll:latest
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: RAGDOLL_DATA_DIR
+                Value: /data
+              - Name: RAGDOLL_JWT_SECRET
+                Value: !If
+                  - UseJwtSecretOverride
+                  - !Ref JwtSecretOverride
+                  - !Sub "${AWS::StackId}-${AWS::AccountId}-${AWS::Region}-ragdoll-jwt"
+      InstanceConfiguration:
+        Cpu: 2048
+        Memory: 4096
+        InstanceRoleArn: !GetAtt RagdollInstanceRole.Arn
+      NetworkConfiguration:
+        EgressConfiguration:
+          EgressType: VPC
+          VpcConnectorArn: !GetAtt RagdollVpcConnector.VpcConnectorArn
+      HealthCheckConfiguration:
+        Path: /api/v1/health
+        Protocol: HTTP
+
+Outputs:
+  ServiceUrl:
+    Value: !GetAtt RagdollService.ServiceUrl
+  RepositoryUri:
+    Value: !GetAtt RagdollRepository.RepositoryUri
+  SourceImage:
+    Value: !Ref SourceImage

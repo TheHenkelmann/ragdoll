@@ -1,0 +1,80 @@
+codecov:
+  require_ci_to_pass: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: false
+      rust:
+        flags:
+          - rust
+        target: auto
+        threshold: 1%
+      python:
+        flags:
+          - python
+        target: auto
+        threshold: 1%
+      frontend:
+        flags:
+          - frontend
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+        informational: false
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+  individual_components:
+    - component_id: python_critical
+      name: Python critical worker paths
+      paths:
+        - python/src/ragdoll_worker/chunk/**
+        - python/src/ragdoll_worker/extract/**
+        - python/src/ragdoll_worker/worker.py
+        - python/src/ragdoll_worker/db.py
+      target: 85%
+    - component_id: rust_critical
+      name: Rust auth search ingest paths
+      paths:
+        - ragdoll/src/auth/**
+        - ragdoll/src/search/**
+        - ragdoll/src/api/sources.rs
+        - ragdoll/src/api/queries.rs
+      target: 75%
+    - component_id: frontend_logic
+      name: Frontend logic modules
+      paths:
+        - frontend/src/utils/**
+        - frontend/src/context/**
+        - frontend/src/api/**
+      target: 90%
+
+flags:
+  rust:
+    paths:
+      - ragdoll/src/
+  python:
+    paths:
+      - python/src/
+  frontend:
+    paths:
+      - frontend/src/
+
+ignore:
+  - ragdoll/src/main.rs
+  - ragdoll/src/models/embed.rs
+  - ragdoll/src/models/rerank.rs
+
+comment:
+  layout: "reach,diff,flags,files,components"
+  behavior: default

@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  --bg: #0f1117;
+  --surface: #171b26;
+  --border: #2a3142;
+  --text: #C6C6C6;
+  --muted: #9aa3b5;
+  --accent: #6ea8fe;
+}
+
+html {
+  color: var(--text);
+}
+
+html.light {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f8fafc;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: #2563eb;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.card {
+  @apply rounded-2xl border p-6 shadow-sm;
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.btn-primary {
+  @apply rounded-lg px-4 py-2 font-medium transition-all text-white;
+  background: #111827;
+}
+
+html.light .btn-primary {
+  background: #111827;
+}
+
+.btn-secondary {
+  @apply rounded-lg px-4 py-2 font-medium transition-all;
+  background: color-mix(in srgb, var(--surface) 80%, var(--border));
+}
+
+.input {
+  @apply w-full rounded-lg border px-4 py-3 transition-all focus:outline-none focus:ring-2;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.nav-item {
+  @apply block rounded-lg px-3 py-2 text-sm transition-all;
+  color: var(--muted);
+}
+
+.nav-item.active,
+.nav-item:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 70%, var(--accent) 8%);
+}
+
+.breadcrumb-link {
+  @apply cursor-pointer underline-offset-4 hover:underline;
+  color: var(--muted);
+}
+
+.banner-warning {
+  @apply border-b px-4 py-2 text-sm text-center;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-color: #991b1b;
+}
+
+.btn-danger {
+  @apply rounded-lg px-4 py-2 font-medium transition-all text-white disabled:cursor-not-allowed disabled:opacity-50;
+  background: #dc2626;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.btn-view {
+  @apply inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all;
+  background: color-mix(in srgb, var(--surface) 80%, var(--border));
+  color: var(--text);
+}
+
+.btn-view:hover {
+  background: color-mix(in srgb, var(--surface) 70%, var(--accent) 12%);
+}
+
+.create-input-wrap {
+  @apply flex min-w-[220px] items-center rounded-lg border;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.create-input-wrap .input {
+  @apply border-0 py-3 focus:ring-0;
+}
+
+.icon-btn-submit {
+  @apply inline-flex shrink-0 items-center justify-center rounded-r-lg px-3 py-2 transition-all;
+  color: var(--muted);
+}
+
+.icon-btn-submit:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.icon-btn-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-btn {
+  @apply inline-flex items-center justify-center rounded-lg p-2 transition-all;
+  color: var(--muted);
+  background: transparent;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 70%, var(--border));
+}
+
+.btn-run {
+  @apply w-full rounded-xl px-6 py-3 text-base font-semibold transition-all md:w-auto;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.btn-run:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.recharts-tooltip-wrapper {
+  outline: none;
+}

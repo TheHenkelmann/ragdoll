@@ -1,0 +1,5 @@
+#!/command/with-contenv bash
+set -euo pipefail
+: "${RAGDOLL_DATA_DIR:?RAGDOLL_DATA_DIR is required}"
+mkdir -p "${RAGDOLL_DATA_DIR}/db" "${RAGDOLL_DATA_DIR}/models" "${RAGDOLL_DATA_DIR}/staging"
+test -w "${RAGDOLL_DATA_DIR}"

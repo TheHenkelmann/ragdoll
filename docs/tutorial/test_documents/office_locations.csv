@@ -1,0 +1,9 @@
+city,country,opened,employees,focus,timezone,remote_friendly
+Berlin,Germany,2016,84,Product development and headquarters,Europe/Berlin,yes
+Munich,Germany,2019,37,Sales and customer success,Europe/Berlin,yes
+Vienna,Austria,2021,22,Support and onboarding,Europe/Vienna,yes
+Zurich,Switzerland,2022,15,Enterprise sales and partner management,Europe/Zurich,no
+Lisbon,Portugal,2023,29,Platform engineering and data integration,Europe/Lisbon,yes
+Amsterdam,Netherlands,2024,18,Marketing and design,Europe/Amsterdam,yes
+London,United Kingdom,2024,12,Finance and legal,Europe/London,no
+Remote,Distributed,2020,41,Distributed team without a fixed office location,Various,yes

@@ -1,0 +1,45 @@
+Onboarding Checklist for New Employees - Lumen Analytics GmbH
+
+This checklist guides the first 30 days and complements the employee handbook.
+It is internal and is worked through by the team lead together with the new
+colleague. The goal is for every new hire to feel productive and welcome by the
+end of the first month, without being overwhelmed in the first week.
+
+Day 1 - Arriving and Access
+- Receive the laptop and verify that full-disk encryption is enabled
+- Set up the company account and activate multi-factor authentication
+- Install the password manager and store the first set of credentials
+- Meet your mentor and schedule a first recurring one-on-one
+- Take an office tour and get introduced to the team
+- Read the employee handbook and the IT security policy
+- Confirm payroll and emergency-contact details with the People team
+
+Week 1 - Foundations
+- Introduction to the Lumen Insights Platform and the product
+- Complete the mandatory IT security training (passwords, VPN, data classes)
+- Get access to the relevant repositories and project boards
+- Set up the home-office workspace and request the equipment budget
+- Submit a first small contribution or pull request
+- Have a short coffee chat with someone from another team
+- Review the team's working agreements and meeting rhythm
+
+Weeks 2 to 4 - Becoming Independent
+- Take ownership of a first project or ticket that can be finished quickly
+- Join at least one customer call or review as an observer
+- Walk through the travel and expense process in the travel portal once
+- Test a vacation request in the self-service portal
+- Pair with at least two different teammates to learn the codebase
+- Give feedback on the onboarding so it can be improved for the next hire
+
+After 30 Days - Feedback
+- First structured feedback conversation with the team lead
+- Collect and clarify any open questions from onboarding
+- Confirm that all required accesses and tools are working
+- Complete the onboarding checklist together and file it
+- Agree on goals and a focus area for the next quarter
+
+Tips
+- Ask questions early; nobody expects you to know everything in week one.
+- Write down anything that confused you - it is the best source of
+  documentation improvements.
+- Block focus time in your calendar so meetings do not fill the whole day.

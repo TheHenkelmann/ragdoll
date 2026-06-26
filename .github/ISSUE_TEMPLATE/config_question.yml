@@ -1,0 +1,20 @@
+name: Config question
+description: Ask about environment variables or deployment
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Docker / Compose
+        - Cloud deploy
+        - Auth / API
+        - Ingest / chunking
+        - Other

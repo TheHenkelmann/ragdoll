@@ -1,0 +1,209 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Ragdoll on ECS Fargate (desiredCount=1, EFS-backed /data)
+
+Parameters:
+  JwtSecretOverride:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional override for RAGDOLL_JWT_SECRET. Leave empty to auto-generate an ephemeral secret (not stored for you).
+  ImageUri:
+    Type: String
+    Default: ghcr.io/thehenkelmann/ragdoll:latest
+
+Conditions:
+  UseJwtSecretOverride: !Not [!Equals [!Ref JwtSecretOverride, ""]]
+
+Resources:
+  RagdollVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.43.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  RagdollPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref RagdollVpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: 10.43.1.0/24
+      MapPublicIpOnLaunch: true
+
+  RagdollInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  RagdollVpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref RagdollVpc
+      InternetGatewayId: !Ref RagdollInternetGateway
+
+  RagdollRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref RagdollVpc
+
+  RagdollDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: RagdollVpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RagdollRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref RagdollInternetGateway
+
+  RagdollSubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref RagdollPublicSubnet
+      RouteTableId: !Ref RagdollRouteTable
+
+  RagdollCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: ragdoll
+
+  RagdollLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/ragdoll
+      RetentionInDays: 14
+
+  RagdollExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  RagdollTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  RagdollFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+
+  RagdollEfsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NFS for Ragdoll EFS
+      VpcId: !Ref RagdollVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          CidrIp: 10.43.0.0/16
+
+  RagdollMountTarget:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref RagdollFileSystem
+      SubnetId: !Ref RagdollPublicSubnet
+      SecurityGroups:
+        - !Ref RagdollEfsSecurityGroup
+
+  RagdollAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref RagdollFileSystem
+      PosixUser:
+        Uid: "1000"
+        Gid: "1000"
+      RootDirectory:
+        CreationInfo:
+          OwnerUid: "1000"
+          OwnerGid: "1000"
+          Permissions: "0777"
+        Path: /ragdoll
+
+  RagdollTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    DependsOn: RagdollMountTarget
+    Properties:
+      Family: ragdoll
+      Cpu: "2048"
+      Memory: "4096"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt RagdollExecutionRole.Arn
+      TaskRoleArn: !GetAtt RagdollTaskRole.Arn
+      Volumes:
+        - Name: data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref RagdollFileSystem
+            TransitEncryption: ENABLED
+            AuthorizationConfig:
+              AccessPointId: !Ref RagdollAccessPoint
+              IAM: DISABLED
+      ContainerDefinitions:
+        - Name: ragdoll
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+          Environment:
+            - Name: RAGDOLL_DATA_DIR
+              Value: /data
+            - Name: RAGDOLL_JWT_SECRET
+              Value: !If
+                - UseJwtSecretOverride
+                - !Ref JwtSecretOverride
+                - !Sub "${AWS::StackId}-${AWS::AccountId}-${AWS::Region}-ragdoll-jwt"
+          MountPoints:
+            - SourceVolume: data
+              ContainerPath: /data
+              ReadOnly: false
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref RagdollLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ragdoll
+
+  RagdollServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTP for Ragdoll
+      VpcId: !Ref RagdollVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+
+  RagdollService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: ragdoll
+      Cluster: !Ref RagdollCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref RagdollTaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref RagdollPublicSubnet
+          SecurityGroups:
+            - !Ref RagdollServiceSecurityGroup
+
+Outputs:
+  ClusterName:
+    Value: !Ref RagdollCluster
+  ServiceName:
+    Value: !GetAtt RagdollService.Name

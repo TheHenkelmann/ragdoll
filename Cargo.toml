@@ -1,0 +1,56 @@
+[package]
+name = "ragdoll"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "One-stop local RAG pipeline: Rust query gateway + Python ingest worker"
+authors = ["Ragdoll Contributors"]
+readme = "README.md"
+repository = "https://github.com/TheHenkelmann/ragdoll"
+
+[lib]
+name = "ragdoll"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ragdoll"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+argon2 = "0.5"
+async-trait = "0.1"
+axum = { version = "0.8", features = ["macros", "multipart"] }
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive", "env"] }
+fastembed = "5.13"
+futures-util = "0.3"
+jsonwebtoken = "9"
+libsql = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
+tokio = { version = "1.43", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "fs", "limit", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+utoipa = { version = "5.3", features = ["axum_extras", "time"] }
+utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+uuid = { version = "1.15", features = ["v4", "serde"] }
+
+[dev-dependencies]
+base64 = "0.22"
+http-body-util = "0.1"
+tempfile = "3.17"
+tokio-test = "0.4"
+tower = { version = "0.5", features = ["util"] }
+uuid = { version = "1.15", features = ["v4"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,24 @@
+name: Bug report
+description: Report incorrect behavior in Ragdoll
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ragdoll version or image tag
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
