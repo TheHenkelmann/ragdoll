@@ -55,6 +55,19 @@ python_version = "3.11"
 strict = true
 packages = ["ragdoll_worker"]
 
+[[tool.mypy.overrides]]
+module = [
+    "libsql_experimental",
+    "libsql_experimental.*",
+    "openpyxl",
+    "openpyxl.*",
+    "pysbd",
+    "pysbd.*",
+    "pytesseract",
+    "pytesseract.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

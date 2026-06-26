@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from conftest import make_docx, make_pptx, make_xlsx
 
 from ragdoll_worker.extract.files import (
     extract_docx,
@@ -17,7 +18,6 @@ from ragdoll_worker.extract.files import (
     extract_xlsx,
     ocr_pdf,
 )
-from conftest import make_docx, make_pptx, make_xlsx
 
 
 def test_extract_from_source_unsupported_type(tmp_path: Path) -> None:
@@ -115,7 +115,9 @@ def test_extract_file_docx_xlsx_pptx(tmp_path: Path) -> None:
 
 @patch("ragdoll_worker.extract.files.ocr_pdf")
 @patch("ragdoll_worker.extract.files.PdfReader")
-def test_extract_pdf_uses_text_layer(mock_reader_cls: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
+def test_extract_pdf_uses_text_layer(
+    mock_reader_cls: MagicMock, mock_ocr: MagicMock, tmp_path: Path
+) -> None:
     page = MagicMock()
     page.extract_text.return_value = "Page one text"
     reader = MagicMock()
@@ -131,7 +133,9 @@ def test_extract_pdf_uses_text_layer(mock_reader_cls: MagicMock, mock_ocr: Magic
 
 @patch("ragdoll_worker.extract.files.ocr_pdf")
 @patch("ragdoll_worker.extract.files.PdfReader")
-def test_extract_pdf_falls_back_to_ocr(mock_reader_cls: MagicMock, mock_ocr: MagicMock, tmp_path: Path) -> None:
+def test_extract_pdf_falls_back_to_ocr(
+    mock_reader_cls: MagicMock, mock_ocr: MagicMock, tmp_path: Path
+) -> None:
     page = MagicMock()
     page.extract_text.return_value = "   "
     reader = MagicMock()
@@ -179,7 +183,9 @@ def test_extract_url_falls_back_to_raw_html(mock_extract: MagicMock, mock_get: M
 
 @patch("ragdoll_worker.extract.files.httpx.get")
 @patch("ragdoll_worker.extract.files.trafilatura.extract")
-def test_extract_url_uses_trafilatura_when_available(mock_extract: MagicMock, mock_get: MagicMock) -> None:
+def test_extract_url_uses_trafilatura_when_available(
+    mock_extract: MagicMock, mock_get: MagicMock
+) -> None:
     response = MagicMock()
     response.text = "<html><body>ignored</body></html>"
     response.raise_for_status = MagicMock()

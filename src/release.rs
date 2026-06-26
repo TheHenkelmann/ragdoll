@@ -9,9 +9,9 @@ use axum::middleware::Next;
 use axum::response::Response;
 use serde::Deserialize;
 
-use crate::api::router::API_V1_PREFIX;
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
+use crate::api::router::API_V1_PREFIX;
 
 #[derive(Debug, Clone)]
 pub struct ReleaseCtx {
@@ -38,7 +38,9 @@ impl FromRequestParts<Arc<AppState>> for ReleaseCtx {
         if let Some(tag) = extract_segment(path, &format!("{API_V1_PREFIX}/stages/")) {
             return resolve_stage(state, &tag).await;
         }
-        Err(ApiError::bad_request("release or stage tag required in path"))
+        Err(ApiError::bad_request(
+            "release or stage tag required in path",
+        ))
     }
 }
 
@@ -87,22 +89,6 @@ fn extract_segment(path: &str, prefix: &str) -> Option<String> {
     path.strip_prefix(prefix)
         .and_then(|rest| rest.split('/').next())
         .map(str::to_string)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extract_segment_parses_release_tag() {
-        let tag = extract_segment("/api/v1/releases/first-release/settings", "/api/v1/releases/");
-        assert_eq!(tag.as_deref(), Some("first-release"));
-    }
-
-    #[test]
-    fn extract_segment_returns_none_for_unrelated_path() {
-        assert!(extract_segment("/api/v1/health", "/api/v1/releases/").is_none());
-    }
 }
 
 async fn resolve_release(
@@ -171,4 +157,23 @@ pub async fn lookup_release_by_tag(state: &AppState, tag: &str) -> Result<Releas
 
 pub async fn lookup_stage_by_tag(state: &AppState, tag: &str) -> Result<ReleaseCtx, ApiError> {
     resolve_stage(state, tag).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_segment_parses_release_tag() {
+        let tag = extract_segment(
+            "/api/v1/releases/first-release/settings",
+            "/api/v1/releases/",
+        );
+        assert_eq!(tag.as_deref(), Some("first-release"));
+    }
+
+    #[test]
+    fn extract_segment_returns_none_for_unrelated_path() {
+        assert!(extract_segment("/api/v1/health", "/api/v1/releases/").is_none());
+    }
 }

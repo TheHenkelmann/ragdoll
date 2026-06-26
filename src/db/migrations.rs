@@ -20,22 +20,16 @@ pub async fn run_migrations(pool: &DbPool, migrations_dir: &Path) -> Result<(), 
     let mut paths: Vec<_> = std::fs::read_dir(migrations_dir)
         .map_err(|e| DbError::Migration(format!("read migrations dir: {e}")))?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext == "sql")
-        })
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "sql"))
         .collect();
 
     paths.sort_by_key(|entry| entry.path());
 
     for entry in paths {
         let path = entry.path();
-        let file_name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| DbError::Migration(format!("invalid migration file: {}", path.display())))?;
+        let file_name = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+            DbError::Migration(format!("invalid migration file: {}", path.display()))
+        })?;
 
         let version: i64 = file_name
             .split('_')
@@ -45,7 +39,10 @@ pub async fn run_migrations(pool: &DbPool, migrations_dir: &Path) -> Result<(), 
             .map_err(|_| DbError::Migration(format!("invalid migration version: {file_name}")))?;
 
         let mut rows = conn
-            .query("SELECT version FROM schema_migrations WHERE version = ?1", [version])
+            .query(
+                "SELECT version FROM schema_migrations WHERE version = ?1",
+                [version],
+            )
             .await?;
 
         if rows.next().await?.is_some() {

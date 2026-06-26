@@ -2,11 +2,11 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Path, Query, State};
+use axum::Json;
 use libsql::Row;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
@@ -46,8 +46,8 @@ pub async fn get_table(
         where_parts.push("COALESCE(q.playground, 0) = 0".to_string());
     }
     if let Some(filter_raw) = params.filter {
-        let filter = decode_filter_param(&filter_raw)
-            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        let filter =
+            decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
         let compiled = crate::filter::compile_filter(&filter, alias)
             .map_err(|e| ApiError::bad_request(e.to_string()))?;
         where_parts.push(compiled.sql);
@@ -127,44 +127,116 @@ fn table_alias(table: &str) -> &str {
 }
 
 fn table_columns(table: &str) -> Option<Vec<String>> {
-    Some(match table {
-        "sources" => vec![
-            "id", "release_id", "name", "type", "uri", "content_hash", "config", "metadata",
-            "status", "error", "created_at", "updated_at",
-        ],
-        "chunks" => vec![
-            "id", "release_id", "source_id", "ordinal", "content", "provenance", "metadata",
-            "token_count", "embedding_model", "embedding_dim", "embedding_version", "created_at",
-        ],
-        "queries" => vec![
-            "id", "release_id", "stage_id", "text", "filters", "params", "playground",
-            "upstream_ms", "embed_ms", "search_ms", "rerank_ms", "store_ms", "total_ms",
-            "candidate_count", "result_count", "response_status", "created_at",
-        ],
-        "query_chunks" => vec![
-            "query_id", "release_id", "stage_id", "step", "rank", "chunk_id", "source_id", "score",
-            "metadata", "content",
-        ],
-        "ingest_jobs" => vec![
-            "id", "release_id", "stage_id", "source_id", "status", "attempts", "max_attempts",
-            "worker_id", "heartbeat_at", "error", "created_at", "started_at", "finished_at",
-            "queue_ms", "extract_ms", "chunk_ms", "embed_ms", "db_write_ms", "total_ms",
-            "chunk_count", "char_count",
-        ],
-        "settings" => vec!["release_id", "key", "value"],
-        "models" => vec![
-            "name", "kind", "runtime", "dim", "uri", "status", "is_default",
-        ],
-        "releases" => vec!["id", "tag", "message", "created_at"],
-        "stages" => vec!["id", "tag", "release_id", "created_at"],
-        "users" => vec![
-            "id", "email", "password_hash", "is_superadmin", "password_is_default", "created_at",
-        ],
-        _ => return None,
-    }
-    .into_iter()
-    .map(String::from)
-    .collect())
+    Some(
+        match table {
+            "sources" => vec![
+                "id",
+                "release_id",
+                "name",
+                "type",
+                "uri",
+                "content_hash",
+                "config",
+                "metadata",
+                "status",
+                "error",
+                "created_at",
+                "updated_at",
+            ],
+            "chunks" => vec![
+                "id",
+                "release_id",
+                "source_id",
+                "ordinal",
+                "content",
+                "provenance",
+                "metadata",
+                "token_count",
+                "embedding_model",
+                "embedding_dim",
+                "embedding_version",
+                "created_at",
+            ],
+            "queries" => vec![
+                "id",
+                "release_id",
+                "stage_id",
+                "text",
+                "filters",
+                "params",
+                "playground",
+                "upstream_ms",
+                "embed_ms",
+                "search_ms",
+                "rerank_ms",
+                "store_ms",
+                "total_ms",
+                "candidate_count",
+                "result_count",
+                "response_status",
+                "created_at",
+            ],
+            "query_chunks" => vec![
+                "query_id",
+                "release_id",
+                "stage_id",
+                "step",
+                "rank",
+                "chunk_id",
+                "source_id",
+                "score",
+                "metadata",
+                "content",
+            ],
+            "ingest_jobs" => vec![
+                "id",
+                "release_id",
+                "stage_id",
+                "source_id",
+                "status",
+                "attempts",
+                "max_attempts",
+                "worker_id",
+                "heartbeat_at",
+                "error",
+                "created_at",
+                "started_at",
+                "finished_at",
+                "queue_ms",
+                "extract_ms",
+                "chunk_ms",
+                "embed_ms",
+                "db_write_ms",
+                "total_ms",
+                "chunk_count",
+                "char_count",
+            ],
+            "settings" => vec!["release_id", "key", "value"],
+            "models" => vec![
+                "name",
+                "kind",
+                "runtime",
+                "dim",
+                "uri",
+                "status",
+                "is_default",
+            ],
+            "releases" => vec!["id", "tag", "message", "created_at"],
+            "stages" => vec!["id", "tag", "release_id", "created_at"],
+            "users" => vec![
+                "id",
+                "email",
+                "password_hash",
+                "is_superadmin",
+                "password_is_default",
+                "created_at",
+            ],
+            _ => return None,
+        }
+        .into_iter()
+        .map(String::from)
+        .collect(),
+    )
 }
 
 #[cfg(test)]

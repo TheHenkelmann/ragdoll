@@ -17,20 +17,35 @@ def test_section_prefix_formats_heading_path() -> None:
 
 def test_assemble_units_text_joins_with_blank_lines() -> None:
     units = [
-        AtomicUnit(text="first", start=0, end=5, kind="paragraph", splittable=True, section_path=()),
-        AtomicUnit(text="second", start=6, end=12, kind="paragraph", splittable=True, section_path=()),
+        AtomicUnit(
+            text="first", start=0, end=5, kind="paragraph", splittable=True, section_path=()
+        ),
+        AtomicUnit(
+            text="second", start=6, end=12, kind="paragraph", splittable=True, section_path=()
+        ),
     ]
     assert assemble_units_text(units) == "first\n\nsecond"
 
 
 def test_pack_unit_groups_merges_small_same_section_groups(mock_tokenizer) -> None:
     units_a = [
-        AtomicUnit(text="short", start=0, end=5, kind="paragraph", splittable=True, section_path=("a",)),
+        AtomicUnit(
+            text="short", start=0, end=5, kind="paragraph", splittable=True, section_path=("a",)
+        ),
     ]
     units_b = [
-        AtomicUnit(text="also short", start=6, end=16, kind="paragraph", splittable=True, section_path=("a",)),
+        AtomicUnit(
+            text="also short",
+            start=6,
+            end=16,
+            kind="paragraph",
+            splittable=True,
+            section_path=("a",),
+        ),
     ]
-    packed = pack_unit_groups([units_a, units_b], min_tokens=10, max_tokens=50, tokenizer=mock_tokenizer)
+    packed = pack_unit_groups(
+        [units_a, units_b], min_tokens=10, max_tokens=50, tokenizer=mock_tokenizer
+    )
     assert len(packed) == 1
     assert len(packed[0]) == 2
 

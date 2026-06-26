@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::{Query, State};
+use axum::Extension;
+use axum::Json;
 use serde::Serialize;
 
 use crate::api::error::ApiError;
 use crate::api::queries::ListQueryParams;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 use crate::filter::decode_filter_param;
 use crate::release::ReleaseCtx;
 
@@ -42,8 +42,8 @@ pub async fn get_sources(
     let mut bind = Vec::new();
 
     if let Some(filter_raw) = params.filter {
-        let filter = decode_filter_param(&filter_raw)
-            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        let filter =
+            decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
         let compiled = crate::filter::compile_filter(&filter, "s")
             .map_err(|e| ApiError::bad_request(e.to_string()))?;
         where_clause = format!("s.release_id = '{}' AND {}", ctx.release_id, compiled.sql);
@@ -62,24 +62,38 @@ pub async fn get_sources(
         bind.len()
     );
 
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(&sql, bind)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let mut items = Vec::new();
-    while let Some(row) = rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         items.push(SourceRecord {
             id: row.get(0).map_err(|e| ApiError::internal(e.to_string()))?,
             name: row.get(1).map_err(|e| ApiError::internal(e.to_string()))?,
             source_type: row.get(2).map_err(|e| ApiError::internal(e.to_string()))?,
             uri: row.get(3).ok(),
             content_hash: row.get(4).ok(),
-            config: serde_json::from_str(&row.get::<String>(5).map_err(|e| ApiError::internal(e.to_string()))?)
-                .unwrap_or(serde_json::json!({})),
-            metadata: serde_json::from_str(&row.get::<String>(6).map_err(|e| ApiError::internal(e.to_string()))?)
-                .unwrap_or(serde_json::json!({})),
+            config: serde_json::from_str(
+                &row.get::<String>(5)
+                    .map_err(|e| ApiError::internal(e.to_string()))?,
+            )
+            .unwrap_or(serde_json::json!({})),
+            metadata: serde_json::from_str(
+                &row.get::<String>(6)
+                    .map_err(|e| ApiError::internal(e.to_string()))?,
+            )
+            .unwrap_or(serde_json::json!({})),
             status: row.get(7).map_err(|e| ApiError::internal(e.to_string()))?,
             error: row.get(8).ok(),
             created_at: row.get(9).map_err(|e| ApiError::internal(e.to_string()))?,
@@ -100,14 +114,19 @@ pub async fn delete_sources(
     let filter_raw = params
         .filter
         .ok_or_else(|| ApiError::bad_request("filter query param required"))?;
-    let filter = decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let filter =
+        decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
     let compiled = crate::filter::compile_filter(&filter, "s")
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     let sql = format!(
         "DELETE FROM sources s WHERE s.release_id = '{}' AND {}",
         ctx.release_id, compiled.sql
     );
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     conn.execute(&sql, compiled.params)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;

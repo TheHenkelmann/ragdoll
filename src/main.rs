@@ -2,7 +2,7 @@
 
 use clap::Parser;
 
-use ragdoll::cli::{Cli, run};
+use ragdoll::cli::{run, Cli};
 use ragdoll::telemetry;
 
 #[tokio::main]

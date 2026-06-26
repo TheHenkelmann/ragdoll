@@ -7,11 +7,11 @@ from pathlib import Path
 import httpx
 import pytesseract
 import trafilatura
-from pdf2image import convert_from_path
-from pypdf import PdfReader
 from docx import Document as DocxDocument
 from openpyxl import load_workbook
+from pdf2image import convert_from_path
 from pptx import Presentation
+from pypdf import PdfReader
 
 
 def extract_from_source(source: dict[str, object], staging_dir: Path) -> str:

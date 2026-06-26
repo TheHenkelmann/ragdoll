@@ -38,7 +38,10 @@ impl Embedder for MockEmbedder {
     }
 
     async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        Ok(texts.iter().map(|text| deterministic_vector(text)).collect())
+        Ok(texts
+            .iter()
+            .map(|text| deterministic_vector(text))
+            .collect())
     }
 }
 

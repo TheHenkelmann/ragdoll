@@ -57,7 +57,9 @@ def test_claim_and_complete_job(worker_db: WorkerDb, worker_config: WorkerConfig
     )
     worker_db.conn.execute(
         """
-        INSERT OR REPLACE INTO ingest_jobs (id, release_id, source_id, status, attempts, max_attempts)
+        INSERT OR REPLACE INTO ingest_jobs (
+            id, release_id, source_id, status, attempts, max_attempts
+        )
         VALUES ('job-claim', ?, 'src-job', 'pending', 0, 3)
         """,
         (release_id,),
@@ -89,7 +91,9 @@ def test_fail_job_retries_until_max_attempts(worker_db: WorkerDb) -> None:
     )
     worker_db.conn.execute(
         """
-        INSERT OR REPLACE INTO ingest_jobs (id, release_id, source_id, status, attempts, max_attempts)
+        INSERT OR REPLACE INTO ingest_jobs (
+            id, release_id, source_id, status, attempts, max_attempts
+        )
         VALUES ('job-fail', ?, 'src-fail', 'processing', 2, 3)
         """,
         (release_id,),
@@ -199,7 +203,9 @@ def test_update_job_metrics_persists_values(worker_db: WorkerDb) -> None:
     )
     worker_db.conn.execute(
         """
-        INSERT OR REPLACE INTO ingest_jobs (id, release_id, source_id, status, attempts, max_attempts)
+        INSERT OR REPLACE INTO ingest_jobs (
+            id, release_id, source_id, status, attempts, max_attempts
+        )
         VALUES ('job-metrics', ?, 'src-metrics', 'processing', 1, 3)
         """,
         (release_id,),

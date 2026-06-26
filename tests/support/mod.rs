@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -45,22 +47,13 @@ pub async fn setup_test_app() -> TestApp {
 
     let conn = state.pool.connect_one().await.expect("conn");
     let mut rows = conn
-        .query(
-            "SELECT id FROM users WHERE is_superadmin = 1 LIMIT 1",
-            (),
-        )
+        .query("SELECT id FROM users WHERE is_superadmin = 1 LIMIT 1", ())
         .await
         .expect("query admin");
     let row = rows.next().await.expect("next").expect("admin row");
     let user_id: String = row.get(0).expect("user id");
-    let token = encode_session_token(
-        &config.jwt_secret,
-        &user_id,
-        "admin@ragdoll.ai",
-        true,
-        3600,
-    )
-    .expect("session token");
+    let token = encode_session_token(&config.jwt_secret, &user_id, "admin@ragdoll.ai", true, 3600)
+        .expect("session token");
 
     TestApp {
         router,
@@ -188,7 +181,13 @@ pub async fn seed_demo_chunk(state: &AppState) {
             id, release_id, source_id, ordinal, content, metadata, provenance, embedding,
             embedding_model, embedding_dim, embedding_version
          ) VALUES (?1, ?2, ?3, 0, ?4, '{}', '[]', vector32(?5), 'BAAI/bge-m3', 1024, '1')",
-        (chunk_id, release_id, source_id, content, vector_json.as_str()),
+        (
+            chunk_id,
+            release_id,
+            source_id,
+            content,
+            vector_json.as_str(),
+        ),
     )
     .await
     .expect("insert chunk");

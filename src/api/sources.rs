@@ -3,16 +3,16 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use axum::Json;
-use axum::Extension;
 use axum::extract::State;
+use axum::Extension;
+use axum::Json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::api::batch::{BatchItemResult, BatchResponse};
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 use crate::release::ReleaseCtx;
 
 #[derive(Debug, serde::Deserialize)]
@@ -111,11 +111,9 @@ async fn create_source(
 ) -> BatchItemResult<SourceEnqueueResult> {
     match create_source_internal(state, ctx, item, settings).await {
         Ok(result) => BatchItemResult::ok(index, result),
-        Err(err) => BatchItemResult::err(
-            index,
-            axum::http::StatusCode::BAD_REQUEST,
-            err.to_string(),
-        ),
+        Err(err) => {
+            BatchItemResult::err(index, axum::http::StatusCode::BAD_REQUEST, err.to_string())
+        }
     }
 }
 
@@ -169,7 +167,9 @@ async fn create_source_internal(
             (None, Some(hash), Some(content))
         }
         "file" => {
-            let content = item.content.context("file source requires base64 content")?;
+            let content = item
+                .content
+                .context("file source requires base64 content")?;
             use base64::Engine;
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(content.trim())
@@ -181,7 +181,11 @@ async fn create_source_internal(
             let staging_path = state.config.staging_dir.join(format!("{source_id}{ext}"));
             std::fs::write(&staging_path, &bytes)?;
             let hash = format!("{:x}", Sha256::digest(&bytes));
-            (Some(staging_path.to_string_lossy().to_string()), Some(hash), None)
+            (
+                Some(staging_path.to_string_lossy().to_string()),
+                Some(hash),
+                None,
+            )
         }
         "url" => {
             let url = item.url.context("url source requires url")?;

@@ -3,5 +3,5 @@
 pub mod dsl;
 pub mod sql;
 
-pub use dsl::{FilterExpr, decode_filter_param};
-pub use sql::{SqlFilter, bind_params, compile_filter};
+pub use dsl::{decode_filter_param, FilterExpr};
+pub use sql::{bind_params, compile_filter, SqlFilter};

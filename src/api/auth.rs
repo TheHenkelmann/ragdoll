@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::State;
+use axum::Extension;
+use axum::Json;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, encode_session_token, validate_email};
+use crate::auth::{encode_session_token, validate_email, AuthContext};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct LoginRequest {
@@ -78,13 +78,10 @@ pub async fn post_login(
     if !validate_email(&body.email) {
         return Err(ApiError::bad_request("invalid email"));
     }
-    let (user_id, is_superadmin, _) = crate::auth::authenticate_user(
-        &state.pool,
-        &body.email,
-        &body.password,
-    )
-    .await
-    .map_err(|_| ApiError::unauthorized("invalid credentials"))?;
+    let (user_id, is_superadmin, _) =
+        crate::auth::authenticate_user(&state.pool, &body.email, &body.password)
+            .await
+            .map_err(|_| ApiError::unauthorized("invalid credentials"))?;
 
     let token = encode_session_token(
         &state.config.jwt_secret,

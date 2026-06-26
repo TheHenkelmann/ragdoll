@@ -67,7 +67,11 @@ pub fn decode_filter_param(raw: &str) -> Result<FilterExpr, FilterError> {
     Ok(expr)
 }
 
-pub fn validate_filter(expr: &FilterExpr, depth: usize, count: &mut usize) -> Result<(), FilterError> {
+pub fn validate_filter(
+    expr: &FilterExpr,
+    depth: usize,
+    count: &mut usize,
+) -> Result<(), FilterError> {
     if depth > MAX_DEPTH {
         return Err(FilterError::Validation(format!(
             "filter depth exceeds {MAX_DEPTH}"
@@ -133,7 +137,11 @@ pub fn resolve_field(field: &str) -> Result<ResolvedField, FilterError> {
         "type" => Ok(ResolvedField::Column("type")),
         meta if meta.starts_with("meta.") => {
             let path = &meta[5..];
-            if path.is_empty() || !path.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.') {
+            if path.is_empty()
+                || !path
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+            {
                 return Err(FilterError::Validation(format!(
                     "invalid metadata path: {meta}"
                 )));

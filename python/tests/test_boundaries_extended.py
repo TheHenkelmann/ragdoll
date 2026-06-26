@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from ragdoll_worker.chunk.boundaries import adjacent_distances, find_breakpoints, groups_from_breakpoints
+from ragdoll_worker.chunk.boundaries import (
+    adjacent_distances,
+    find_breakpoints,
+    groups_from_breakpoints,
+)
 
 
 def test_adjacent_distances_for_orthogonal_vectors() -> None:

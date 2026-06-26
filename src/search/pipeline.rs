@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db::DbPool;
-use crate::filter::{FilterExpr, compile_filter};
+use crate::filter::{compile_filter, FilterExpr};
 use crate::models::ModelProvider;
 use crate::release::ReleaseCtx;
 use crate::search::score::{cosine_similarity_from_distance, normalize_rerank_scores};
 use crate::settings::{
-    DEFAULT_RERANK_CANDIDATES, DEFAULT_TOP_K, RuntimeSettings, effective_store_payload,
+    effective_store_payload, RuntimeSettings, DEFAULT_RERANK_CANDIDATES, DEFAULT_TOP_K,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,21 +61,13 @@ pub struct QueryLatency {
     pub result_count: usize,
 }
 
+#[derive(Default)]
 pub struct QueryOptions {
     pub ts_start: Option<i64>,
     pub store_payload: bool,
     pub playground: bool,
 }
 
-impl Default for QueryOptions {
-    fn default() -> Self {
-        Self {
-            ts_start: None,
-            store_payload: false,
-            playground: false,
-        }
-    }
-}
 
 pub struct SearchPipeline {
     pub pool: DbPool,
@@ -99,11 +91,8 @@ impl SearchPipeline {
             .max(top_k);
         let min_semantic = request.min_semantic_score.unwrap_or(0.0);
         let min_rerank = request.min_rerank_score.unwrap_or(0.0);
-        let store_payload = effective_store_payload(
-            settings,
-            options.store_payload,
-            options.playground,
-        );
+        let store_payload =
+            effective_store_payload(settings, options.store_payload, options.playground);
 
         let upstream_ms = options.ts_start.map(|ts| {
             let now = time::OffsetDateTime::now_utc().unix_timestamp() * 1000;
@@ -409,11 +398,8 @@ impl SearchPipeline {
             .rerank_candidates
             .unwrap_or(DEFAULT_RERANK_CANDIDATES)
             .max(top_k);
-        let store_payload = effective_store_payload(
-            settings,
-            options.store_payload,
-            options.playground,
-        );
+        let store_payload =
+            effective_store_payload(settings, options.store_payload, options.playground);
 
         let filter_json = request
             .filter

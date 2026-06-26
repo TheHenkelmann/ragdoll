@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use crate::api::build_router;
 use crate::auth::ensure_superadmin;
 use crate::config::Config;
-use crate::db::{DbPool, migrations, model_guard};
+use crate::db::{migrations, model_guard, DbPool};
 use crate::models;
 
 #[derive(Parser)]
@@ -33,7 +33,9 @@ pub async fn run(cli: Cli) -> anyhow::Result<()> {
         Commands::ModelsEnsure => models::ensure_models(&config).await,
         Commands::ModelGuard => {
             let pool = DbPool::connect(&config).await?;
-            model_guard::run_model_guard(&pool, &config).await.map_err(Into::into)
+            model_guard::run_model_guard(&pool, &config)
+                .await
+                .map_err(Into::into)
         }
         Commands::Doctor => doctor(config).await,
     }
@@ -62,7 +64,10 @@ pub async fn doctor(config: Config) -> anyhow::Result<()> {
     config.ensure_directories()?;
     println!("RAGDOLL_DATA_DIR={}", config.data_dir.display());
     println!("RAGDOLL_DB_PATH={}", config.db_path.display());
-    println!("RAGDOLL_MODEL_CACHE_DIR={}", config.model_cache_dir.display());
+    println!(
+        "RAGDOLL_MODEL_CACHE_DIR={}",
+        config.model_cache_dir.display()
+    );
     println!("RAGDOLL_STAGING_DIR={}", config.staging_dir.display());
     println!("RAGDOLL_EMBEDDING_MODEL={}", config.embedding_model);
     Ok(())

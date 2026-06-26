@@ -12,7 +12,7 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 
-from ragdoll_worker.config import WorkerConfig, sanitize_model_name
+from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb
 
 

@@ -16,10 +16,7 @@ def _model_dir(config: WorkerConfig) -> Path:
 
 @pytest.mark.skipif(
     not _model_is_complete(
-        Path(__file__).resolve().parents[1]
-        / "data"
-        / "models"
-        / sanitize_model_name("BAAI/bge-m3")
+        Path(__file__).resolve().parents[1] / "data" / "models" / sanitize_model_name("BAAI/bge-m3")
     ),
     reason="ONNX embedding model files not present under ragdoll/data/models",
 )

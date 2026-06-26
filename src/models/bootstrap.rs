@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use fastembed::{
     EmbeddingModel, InitOptions, RerankInitOptions, RerankerModel, TextEmbedding, TextRerank,
 };
@@ -93,14 +93,23 @@ async fn ensure_single_model(config: &Config, model_name: &str, required: bool) 
                 dir.display()
             );
         }
-        tracing::warn!(model = model_name, "model missing but optional in offline mode");
+        tracing::warn!(
+            model = model_name,
+            "model missing but optional in offline mode"
+        );
         return Ok(());
     }
 
-    tracing::info!(model = model_name, "downloading model via fastembed cache bootstrap");
+    tracing::info!(
+        model = model_name,
+        "downloading model via fastembed cache bootstrap"
+    );
     bootstrap_download(config, model_name, &dir)?;
     if !model_is_complete(&dir) {
-        bail!("model download incomplete for {model_name} at {}", dir.display());
+        bail!(
+            "model download incomplete for {model_name} at {}",
+            dir.display()
+        );
     }
     Ok(())
 }
@@ -143,11 +152,7 @@ fn hf_cache_slugs(model_name: &str) -> Vec<String> {
     }
 }
 
-fn materialize_canonical_model(
-    config: &Config,
-    model_name: &str,
-    target_dir: &Path,
-) -> Result<()> {
+fn materialize_canonical_model(config: &Config, model_name: &str, target_dir: &Path) -> Result<()> {
     let snapshot = find_fastembed_snapshot(&config.model_cache_dir, model_name)
         .with_context(|| format!("could not locate downloaded artifacts for {model_name}"))?;
 
@@ -177,7 +182,10 @@ fn materialize_canonical_model(
     for file in TOKENIZER_FILES {
         let source = snapshot.join(file);
         if !source.exists() {
-            bail!("missing tokenizer artifact {file} in {}", snapshot.display());
+            bail!(
+                "missing tokenizer artifact {file} in {}",
+                snapshot.display()
+            );
         }
         std::fs::copy(&source, target_dir.join(file))
             .with_context(|| format!("copy {}", source.display()))?;

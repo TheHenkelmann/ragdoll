@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::State;
+use axum::Extension;
+use axum::Json;
 use serde_json::{Map, Value};
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 use crate::release::ReleaseCtx;
 use crate::settings::RuntimeSettings;
 

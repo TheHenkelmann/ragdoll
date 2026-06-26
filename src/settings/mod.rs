@@ -14,17 +14,14 @@ pub const DEFAULT_MIN_SCORE: f32 = 0.0;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PayloadStorage {
+    #[default]
     PerRequest,
     Forced,
     Forbidden,
 }
 
-impl Default for PayloadStorage {
-    fn default() -> Self {
-        Self::PerRequest
-    }
-}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeSettings {
@@ -60,6 +57,12 @@ impl Default for RuntimeSettings {
 #[derive(Clone)]
 pub struct SettingsCache {
     inner: Arc<RwLock<HashMap<String, RuntimeSettings>>>,
+}
+
+impl Default for SettingsCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SettingsCache {
@@ -109,8 +112,7 @@ pub async fn load_settings(pool: &DbPool, release_id: &str) -> Result<RuntimeSet
 }
 
 fn apply_setting(settings: &mut RuntimeSettings, key: &str, raw: &str) -> Result<(), DbError> {
-    let value: Value = serde_json::from_str(raw)
-        .unwrap_or_else(|_| Value::String(raw.to_string()));
+    let value: Value = serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.to_string()));
 
     match key {
         "embedding_model" => settings.embedding_model = parse_string(value)?,
@@ -208,15 +210,23 @@ mod tests {
 
     #[test]
     fn effective_store_payload_respects_policy() {
-        let mut settings = RuntimeSettings::default();
-        settings.payload_storage = PayloadStorage::Forbidden;
+        let settings = RuntimeSettings {
+            payload_storage: PayloadStorage::Forbidden,
+            ..RuntimeSettings::default()
+        };
         assert!(!effective_store_payload(&settings, true, false));
         assert!(effective_store_payload(&settings, false, true));
 
-        settings.payload_storage = PayloadStorage::Forced;
+        let settings = RuntimeSettings {
+            payload_storage: PayloadStorage::Forced,
+            ..RuntimeSettings::default()
+        };
         assert!(effective_store_payload(&settings, false, false));
 
-        settings.payload_storage = PayloadStorage::PerRequest;
+        let settings = RuntimeSettings {
+            payload_storage: PayloadStorage::PerRequest,
+            ..RuntimeSettings::default()
+        };
         assert!(effective_store_payload(&settings, true, false));
         assert!(!effective_store_payload(&settings, false, false));
     }

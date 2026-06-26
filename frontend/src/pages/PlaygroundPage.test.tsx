@@ -62,7 +62,7 @@ describe("PlaygroundPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
     });
 
-    expect(await screen.findByText("Timeline", { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByText("Timeline", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByText("Semantic Results")).toBeInTheDocument();
     expect(screen.getAllByText(/Doc A/).length).toBeGreaterThan(0);
   });

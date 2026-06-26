@@ -23,18 +23,9 @@ async fn revoked_api_key_returns_unauthorized() {
     let app = setup_test_app().await;
     let token = app.create_api_key_token("temp-key").await;
     let conn = app.state.pool.connect_one().await.unwrap();
-    conn.execute("DELETE FROM api_keys", ())
-        .await
-        .unwrap();
+    conn.execute("DELETE FROM api_keys", ()).await.unwrap();
 
-    let (status, _) = json_request(
-        &app,
-        "GET",
-        "/api/v1/releases",
-        None,
-        Some(&token),
-    )
-    .await;
+    let (status, _) = json_request(&app, "GET", "/api/v1/releases", None, Some(&token)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
@@ -94,10 +85,7 @@ async fn post_text_source_creates_pending_job() {
 
     let conn = app.state.pool.connect_one().await.unwrap();
     let mut rows = conn
-        .query(
-            "SELECT status FROM sources WHERE id = ?1",
-            [source_id],
-        )
+        .query("SELECT status FROM sources WHERE id = ?1", [source_id])
         .await
         .unwrap();
     let row = rows.next().await.unwrap().unwrap();
@@ -149,9 +137,7 @@ async fn post_source_rejects_missing_text_content() {
 async fn post_file_source_writes_staging_file() {
     let app = setup_test_app().await;
     let encoded = "ZmlsZSBib2R5";
-    let body = format!(
-        r#"[{{"type":"file","name":"notes.txt","content":"{encoded}"}}]"#
-    );
+    let body = format!(r#"[{{"type":"file","name":"notes.txt","content":"{encoded}"}}]"#);
     let (status, json) = json_request(
         &app,
         "POST",
@@ -209,5 +195,9 @@ async fn get_sources_lists_created_source() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(json.as_array().unwrap().iter().any(|s| s["name"] == "listed"));
+    assert!(json
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s["name"] == "listed"));
 }

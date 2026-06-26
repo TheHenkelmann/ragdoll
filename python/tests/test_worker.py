@@ -109,7 +109,9 @@ def test_process_job_writes_chunks_and_metrics(
     mock_split.assert_called_once()
 
 
-def test_process_job_rejects_empty_extract(worker_db: WorkerDb, worker_config: WorkerConfig) -> None:
+def test_process_job_rejects_empty_extract(
+    worker_db: WorkerDb, worker_config: WorkerConfig
+) -> None:
     embedder = MagicMock()
     _insert_pending_job(
         worker_db,
@@ -134,7 +136,10 @@ def test_process_job_rejects_unsupported_strategy(
 ) -> None:
     release_id = "00000000-0000-0000-0000-000000000001"
     worker_db.conn.execute(
-        "INSERT OR REPLACE INTO settings (release_id, key, value) VALUES (?, 'chunking_strategy', ?)",
+        """
+        INSERT OR REPLACE INTO settings (release_id, key, value)
+        VALUES (?, 'chunking_strategy', ?)
+        """,
         (release_id, '"fixed"'),
     )
     commit = getattr(worker_db.conn, "commit", None)

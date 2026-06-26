@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,8 +100,8 @@ mod tests {
 
     #[test]
     fn session_token_roundtrip() {
-        let token = encode_session_token("secret", "user-1", "admin@ragdoll.ai", true, 3600)
-            .unwrap();
+        let token =
+            encode_session_token("secret", "user-1", "admin@ragdoll.ai", true, 3600).unwrap();
         let claims = verify_token("secret", &token).unwrap();
         assert_eq!(claims.sub, "user-1");
         assert_eq!(claims.typ, TokenKind::Session);
@@ -118,8 +118,8 @@ mod tests {
 
     #[test]
     fn wrong_secret_fails_verification() {
-        let token = encode_session_token("secret", "user-1", "admin@ragdoll.ai", true, 3600)
-            .unwrap();
+        let token =
+            encode_session_token("secret", "user-1", "admin@ragdoll.ai", true, 3600).unwrap();
         assert!(verify_token("other-secret", &token).is_err());
     }
 }

@@ -18,9 +18,8 @@ pub struct DbPool {
 impl DbPool {
     pub async fn connect(config: &Config) -> Result<Self, DbError> {
         if let Some(parent) = config.db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DbError::Migration(format!("failed to create db directory: {e}"))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DbError::Migration(format!("failed to create db directory: {e}")))?;
         }
 
         let db = Builder::new_local(&config.db_path).build().await?;
@@ -32,9 +31,8 @@ impl DbPool {
 
     pub async fn connect_path(path: &Path) -> Result<Self, DbError> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                DbError::Migration(format!("failed to create db directory: {e}"))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| DbError::Migration(format!("failed to create db directory: {e}")))?;
         }
 
         let db = Builder::new_local(path).build().await?;
@@ -71,7 +69,8 @@ where
             Ok(value) => return Ok(value),
             Err(err) if err.is_locked() && attempt + 1 < MAX_LOCKED_ATTEMPTS => {
                 last_err = Some(err);
-                tokio::time::sleep(std::time::Duration::from_millis(50 * (attempt as u64 + 1))).await;
+                tokio::time::sleep(std::time::Duration::from_millis(50 * (attempt as u64 + 1)))
+                    .await;
             }
             Err(err) => return Err(err),
         }

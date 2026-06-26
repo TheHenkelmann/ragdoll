@@ -13,9 +13,10 @@ async fn migrations_seed_release_and_settings() {
 
     let conn = pool.connect_one().await.unwrap();
     let mut rows = conn
-        .query("SELECT tag FROM releases WHERE id = ?1", [
-            "00000000-0000-0000-0000-000000000001",
-        ])
+        .query(
+            "SELECT tag FROM releases WHERE id = ?1",
+            ["00000000-0000-0000-0000-000000000001"],
+        )
         .await
         .unwrap();
     let row = rows.next().await.unwrap().unwrap();

@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::{Path, State};
+use axum::Extension;
+use axum::Json;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 use crate::config::Config;
 use crate::models::bootstrap::{ensure_single_model_public, list_supported_models};
 
@@ -46,6 +46,13 @@ fn is_whitelisted(name: &str) -> bool {
     matches!(name, "BAAI/bge-m3" | "BAAI/bge-reranker-v2-m3")
 }
 
+pub fn fixed_model_info(config: &Config) -> ModelsResponse {
+    ModelsResponse {
+        embedding_dim: config.embedding_dim,
+        models: list_supported_models(config),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,12 +61,5 @@ mod tests {
     fn is_whitelisted_accepts_supported_models() {
         assert!(is_whitelisted("BAAI/bge-m3"));
         assert!(!is_whitelisted("unknown/model"));
-    }
-}
-
-pub fn fixed_model_info(config: &Config) -> ModelsResponse {
-    ModelsResponse {
-        embedding_dim: config.embedding_dim,
-        models: list_supported_models(config),
     }
 }

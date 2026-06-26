@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
 from typing import Any
@@ -38,7 +37,9 @@ def _sqlite_ms_delta(created_at: str | None, started_at: str | None) -> int:
     return max(0, int((started - created).total_seconds() * 1000))
 
 
-def process_job(db: WorkerDb, config: WorkerConfig, embedder: Embedder, job: dict[str, Any]) -> None:
+def process_job(
+    db: WorkerDb, config: WorkerConfig, embedder: Embedder, job: dict[str, Any]
+) -> None:
     started = time.perf_counter()
     queue_ms = _sqlite_ms_delta(job.get("created_at"), job.get("started_at"))
     source = db.fetch_source(job["source_id"])

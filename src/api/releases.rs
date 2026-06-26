@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::{Path, State};
+use axum::Extension;
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 
 #[derive(Debug, Serialize)]
 pub struct ReleaseRecord {
@@ -45,7 +45,11 @@ pub struct UpdateReleaseRequest {
 pub async fn list_releases(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ReleaseRecord>>, ApiError> {
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(
             "SELECT id, tag, message, created_at FROM releases ORDER BY created_at DESC",
@@ -54,14 +58,25 @@ pub async fn list_releases(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut items = Vec::new();
-    while let Some(row) = rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         let id: String = row.get(0).map_err(|e| ApiError::internal(e.to_string()))?;
         let mut stage_rows = conn
-            .query("SELECT tag FROM stages WHERE release_id = ?1", [id.as_str()])
+            .query(
+                "SELECT tag FROM stages WHERE release_id = ?1",
+                [id.as_str()],
+            )
             .await
             .map_err(|e| ApiError::internal(e.to_string()))?;
         let mut stage_tags = Vec::new();
-        while let Some(srow) = stage_rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+        while let Some(srow) = stage_rows
+            .next()
+            .await
+            .map_err(|e| ApiError::internal(e.to_string()))?
+        {
             stage_tags.push(srow.get(0).map_err(|e| ApiError::internal(e.to_string()))?);
         }
         items.push(ReleaseRecord {
@@ -83,7 +98,11 @@ pub async fn create_release(
     require_superadmin(&auth)?;
     validate_tag(&body.tag)?;
     let id = Uuid::new_v4().to_string();
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     conn.execute(
         "INSERT INTO releases (id, tag, message) VALUES (?1, ?2, ?3)",
         (id.as_str(), body.tag.as_str(), body.message.as_str()),
@@ -118,7 +137,11 @@ pub async fn rename_release(
 ) -> Result<Json<ReleaseRecord>, ApiError> {
     require_superadmin(&auth)?;
     validate_tag(&body.tag)?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query("SELECT id FROM releases WHERE tag = ?1", [tag.as_str()])
         .await
@@ -150,11 +173,18 @@ pub async fn rename_release(
         .map_err(|e| ApiError::internal(e.to_string()))?
         .ok_or_else(|| ApiError::not_found("release not found"))?;
     let mut stage_rows = conn
-        .query("SELECT tag FROM stages WHERE release_id = ?1", [release_id.as_str()])
+        .query(
+            "SELECT tag FROM stages WHERE release_id = ?1",
+            [release_id.as_str()],
+        )
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut stage_tags = Vec::new();
-    while let Some(srow) = stage_rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(srow) = stage_rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         stage_tags.push(srow.get(0).map_err(|e| ApiError::internal(e.to_string()))?);
     }
 
@@ -173,7 +203,11 @@ pub async fn delete_release(
     Path(tag): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_superadmin(&auth)?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut count_rows = conn
         .query("SELECT COUNT(*) FROM releases", ())
         .await
@@ -200,7 +234,10 @@ pub async fn delete_release(
         .get(0)
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut stage_rows = conn
-        .query("SELECT COUNT(*) FROM stages WHERE release_id = ?1", [release_id.as_str()])
+        .query(
+            "SELECT COUNT(*) FROM stages WHERE release_id = ?1",
+            [release_id.as_str()],
+        )
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let stage_count: i64 = stage_rows
@@ -283,13 +320,21 @@ async fn fork_release(
         )
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
-    while let Some(row) = settings.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = settings
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         conn.execute(
             "INSERT INTO settings (release_id, key, value) VALUES (?1, ?2, ?3)",
             (
                 target_release_id,
-                row.get::<String>(0).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
-                row.get::<String>(1).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(0)
+                    .map_err(|e| ApiError::internal(e.to_string()))?
+                    .as_str(),
+                row.get::<String>(1)
+                    .map_err(|e| ApiError::internal(e.to_string()))?
+                    .as_str(),
             ),
         )
         .await
@@ -306,7 +351,11 @@ async fn fork_release(
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let mut source_map = std::collections::HashMap::new();
-    while let Some(row) = sources.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = sources
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         let old_id: String = row.get(0).map_err(|e| ApiError::internal(e.to_string()))?;
         let new_id = Uuid::new_v4().to_string();
         source_map.insert(old_id.clone(), new_id.clone());
@@ -341,7 +390,11 @@ async fn fork_release(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
-    while let Some(row) = chunks.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = chunks
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         let old_source: String = row.get(1).map_err(|e| ApiError::internal(e.to_string()))?;
         let new_source = source_map
             .get(&old_source)

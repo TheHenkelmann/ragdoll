@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Query, State};
+use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
@@ -118,7 +118,7 @@ async fn build_query_filter(
     state: &AppState,
     params: &AnalyticsParams,
 ) -> Result<QueryFilter, ApiError> {
-    let days = params.days.max(1).min(365);
+    let days = params.days.clamp(1, 365);
     let status_groups = parse_status_groups(params.status.as_deref());
     let status_sql = status_group_sql(&status_groups, "q.response_status");
 
@@ -224,13 +224,9 @@ pub async fn get_analytics(
     let store_latency = latency_stats(&conn, "store_ms", &latency_filter, &filter.bind).await?;
 
     let release_id = if params.lens == "release" {
-        lookup_release_by_tag(&state, &params.tag)
-            .await?
-            .release_id
+        lookup_release_by_tag(&state, &params.tag).await?.release_id
     } else {
-        lookup_stage_by_tag(&state, &params.tag)
-            .await?
-            .release_id
+        lookup_stage_by_tag(&state, &params.tag).await?.release_id
     };
 
     let mut source_rows = conn
@@ -403,7 +399,10 @@ async fn latency_stats(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?
     {
-        values.push(row.get::<i64>(0).map_err(|e| ApiError::internal(e.to_string()))? as f64);
+        values.push(
+            row.get::<i64>(0)
+                .map_err(|e| ApiError::internal(e.to_string()))? as f64,
+        );
     }
     if values.is_empty() {
         return Ok(LatencyStats { p50: 0.0, p95: 0.0 });
@@ -428,10 +427,7 @@ mod tests {
 
     #[test]
     fn parse_status_groups_defaults_to_all() {
-        assert_eq!(
-            parse_status_groups(None),
-            vec!["2xx", "4xx", "5xx"]
-        );
+        assert_eq!(parse_status_groups(None), vec!["2xx", "4xx", "5xx"]);
     }
 
     #[test]

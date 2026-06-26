@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::{Path, Query, State};
+use axum::Extension;
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -12,7 +12,7 @@ use crate::api::batch::{BatchItemResult, BatchResponse};
 use crate::api::error::ApiError;
 use crate::api::queries::ListQueryParams;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, require_superadmin};
+use crate::auth::{require_superadmin, AuthContext};
 use crate::filter::decode_filter_param;
 use crate::release::{NestedPathId, ReleaseCtx};
 
@@ -61,8 +61,8 @@ pub async fn get_chunks(
     let mut bind = Vec::new();
 
     if let Some(filter_raw) = params.filter {
-        let filter = decode_filter_param(&filter_raw)
-            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        let filter =
+            decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
         let compiled = crate::filter::compile_filter(&filter, "c")
             .map_err(|e| ApiError::bad_request(e.to_string()))?;
         where_clause = format!("c.release_id = '{}' AND {}", ctx.release_id, compiled.sql);
@@ -80,23 +80,37 @@ pub async fn get_chunks(
         bind.len()
     );
 
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(&sql, bind)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let mut items = Vec::new();
-    while let Some(row) = rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         items.push(ChunkRecord {
             id: row.get(0).map_err(|e| ApiError::internal(e.to_string()))?,
             source_id: row.get(1).map_err(|e| ApiError::internal(e.to_string()))?,
             ordinal: row.get(2).map_err(|e| ApiError::internal(e.to_string()))?,
             content: row.get(3).map_err(|e| ApiError::internal(e.to_string()))?,
-            metadata: serde_json::from_str(&row.get::<String>(4).map_err(|e| ApiError::internal(e.to_string()))?)
-                .unwrap_or(serde_json::json!({})),
-            provenance: serde_json::from_str(&row.get::<String>(5).map_err(|e| ApiError::internal(e.to_string()))?)
-                .unwrap_or(serde_json::json!([])),
+            metadata: serde_json::from_str(
+                &row.get::<String>(4)
+                    .map_err(|e| ApiError::internal(e.to_string()))?,
+            )
+            .unwrap_or(serde_json::json!({})),
+            provenance: serde_json::from_str(
+                &row.get::<String>(5)
+                    .map_err(|e| ApiError::internal(e.to_string()))?,
+            )
+            .unwrap_or(serde_json::json!([])),
             token_count: row.get(6).ok(),
             created_at: row.get(7).map_err(|e| ApiError::internal(e.to_string()))?,
         });
@@ -214,7 +228,11 @@ pub async fn patch_chunk(
     Json(patch): Json<ChunkPatch>,
 ) -> Result<Json<ChunkRecord>, ApiError> {
     require_superadmin(&auth)?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     if let Some(content) = &patch.content {
         conn.execute(
             "UPDATE chunks SET content = ?1 WHERE id = ?2 AND release_id = ?3",
@@ -254,10 +272,16 @@ pub async fn patch_chunk(
         source_id: row.get(1).map_err(|e| ApiError::internal(e.to_string()))?,
         ordinal: row.get(2).map_err(|e| ApiError::internal(e.to_string()))?,
         content: row.get(3).map_err(|e| ApiError::internal(e.to_string()))?,
-        metadata: serde_json::from_str(&row.get::<String>(4).map_err(|e| ApiError::internal(e.to_string()))?)
-            .unwrap_or(serde_json::json!({})),
-        provenance: serde_json::from_str(&row.get::<String>(5).map_err(|e| ApiError::internal(e.to_string()))?)
-            .unwrap_or(serde_json::json!([])),
+        metadata: serde_json::from_str(
+            &row.get::<String>(4)
+                .map_err(|e| ApiError::internal(e.to_string()))?,
+        )
+        .unwrap_or(serde_json::json!({})),
+        provenance: serde_json::from_str(
+            &row.get::<String>(5)
+                .map_err(|e| ApiError::internal(e.to_string()))?,
+        )
+        .unwrap_or(serde_json::json!([])),
         token_count: row.get(6).ok(),
         created_at: row.get(7).map_err(|e| ApiError::internal(e.to_string()))?,
     }))
@@ -273,14 +297,19 @@ pub async fn delete_chunks(
     let filter_raw = params
         .filter
         .ok_or_else(|| ApiError::bad_request("filter query param required"))?;
-    let filter = decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let filter =
+        decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
     let compiled = crate::filter::compile_filter(&filter, "c")
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     let sql = format!(
         "DELETE FROM chunks c WHERE c.release_id = '{}' AND {}",
         ctx.release_id, compiled.sql
     );
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     conn.execute(&sql, compiled.params)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;

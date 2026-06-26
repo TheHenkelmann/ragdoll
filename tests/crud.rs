@@ -19,14 +19,8 @@ async fn create_and_list_release() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["tag"], "v2");
 
-    let (status, list) = json_request(
-        &app,
-        "GET",
-        "/api/v1/releases",
-        None,
-        Some(&app.token),
-    )
-    .await;
+    let (status, list) =
+        json_request(&app, "GET", "/api/v1/releases", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(list.as_array().unwrap().iter().any(|r| r["tag"] == "v2"));
 }
@@ -122,14 +116,7 @@ async fn create_and_delete_user() {
     assert_eq!(status, StatusCode::OK);
     let user_id = created["id"].as_str().unwrap();
 
-    let (status, users) = json_request(
-        &app,
-        "GET",
-        "/api/v1/users",
-        None,
-        Some(&app.token),
-    )
-    .await;
+    let (status, users) = json_request(&app, "GET", "/api/v1/users", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(users.as_array().unwrap().iter().any(|u| u["id"] == user_id));
 
@@ -159,14 +146,8 @@ async fn api_key_lifecycle() {
     let key_id = created["id"].as_str().unwrap();
     assert!(created["token"].is_string());
 
-    let (status, keys) = json_request(
-        &app,
-        "GET",
-        "/api/v1/api_keys",
-        None,
-        Some(&app.token),
-    )
-    .await;
+    let (status, keys) =
+        json_request(&app, "GET", "/api/v1/api_keys", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(keys.as_array().unwrap().iter().any(|k| k["id"] == key_id));
 

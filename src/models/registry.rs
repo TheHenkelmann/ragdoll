@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::models::{EmbedModel, RerankModel};
 use crate::models::traits::{Embedder, ModelProvider, Reranker};
+use crate::models::{EmbedModel, RerankModel};
 
 pub struct ModelRegistry {
     config: Config,
@@ -31,8 +31,7 @@ impl ModelRegistry {
         if let Some(model) = map.get(model_name) {
             return Ok(model.clone());
         }
-        let model: Arc<dyn Embedder> =
-            Arc::new(EmbedModel::new(&self.config, model_name)?);
+        let model: Arc<dyn Embedder> = Arc::new(EmbedModel::new(&self.config, model_name)?);
         map.insert(model_name.to_string(), model.clone());
         Ok(model)
     }
@@ -42,8 +41,7 @@ impl ModelRegistry {
         if let Some(model) = map.get(model_name) {
             return Ok(model.clone());
         }
-        let model: Arc<dyn Reranker> =
-            Arc::new(RerankModel::new(&self.config, model_name)?);
+        let model: Arc<dyn Reranker> = Arc::new(RerankModel::new(&self.config, model_name)?);
         map.insert(model_name.to_string(), model.clone());
         Ok(model)
     }

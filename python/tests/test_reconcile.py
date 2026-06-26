@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb
@@ -20,7 +20,10 @@ def _insert_processing_job(
 ) -> None:
     release_id = "00000000-0000-0000-0000-000000000001"
     db.conn.execute(
-        "INSERT OR REPLACE INTO sources (id, release_id, name, type, uri, status) VALUES (?, ?, 'demo', ?, ?, 'processing')",
+        """
+        INSERT OR REPLACE INTO sources (id, release_id, name, type, uri, status)
+        VALUES (?, ?, 'demo', ?, ?, 'processing')
+        """,
         (source_id, release_id, source_type, uri),
     )
     db.conn.execute(
@@ -36,8 +39,12 @@ def _insert_processing_job(
         commit()
 
 
-def test_reconcile_resets_stale_processing_job(worker_db: WorkerDb, worker_config: WorkerConfig) -> None:
-    stale = (datetime.now(timezone.utc) - timedelta(seconds=worker_config.job_lease_seconds + 10)).isoformat()
+def test_reconcile_resets_stale_processing_job(
+    worker_db: WorkerDb, worker_config: WorkerConfig
+) -> None:
+    stale = (
+        datetime.now(UTC) - timedelta(seconds=worker_config.job_lease_seconds + 10)
+    ).isoformat()
     _insert_processing_job(
         worker_db,
         job_id="job-1",
@@ -59,8 +66,10 @@ def test_reconcile_resets_stale_processing_job(worker_db: WorkerDb, worker_confi
     assert "stale" in row[1]
 
 
-def test_reconcile_fails_job_with_missing_text_staging(worker_db: WorkerDb, worker_config: WorkerConfig) -> None:
-    recent = datetime.now(timezone.utc).isoformat()
+def test_reconcile_fails_job_with_missing_text_staging(
+    worker_db: WorkerDb, worker_config: WorkerConfig
+) -> None:
+    recent = datetime.now(UTC).isoformat()
     _insert_processing_job(
         worker_db,
         job_id="job-2",

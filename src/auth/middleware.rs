@@ -8,8 +8,8 @@ use axum::http::{Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
 
-use crate::api::router::API_V1_PREFIX;
 use crate::api::router::AppState;
+use crate::api::router::API_V1_PREFIX;
 use crate::auth::jwt::{AuthClaims, TokenKind};
 use crate::auth::verify_token;
 
@@ -113,17 +113,12 @@ fn is_stage_plane_write(path: &str, method: &Method) -> bool {
 fn principal_error_status(message: &str) -> StatusCode {
     if message.contains("user not found") || message.contains("api key revoked") {
         StatusCode::UNAUTHORIZED
-    } else if message.contains("database is locked") {
-        StatusCode::SERVICE_UNAVAILABLE
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     }
 }
 
-async fn resolve_principal(
-    state: &AppState,
-    claims: &AuthClaims,
-) -> anyhow::Result<AuthContext> {
+async fn resolve_principal(state: &AppState, claims: &AuthClaims) -> anyhow::Result<AuthContext> {
     match claims.typ {
         TokenKind::Session => {
             let email = claims
@@ -170,7 +165,9 @@ pub fn require_superadmin(auth: &AuthContext) -> Result<(), crate::api::error::A
     if auth.is_superadmin() {
         Ok(())
     } else {
-        Err(crate::api::error::ApiError::forbidden("superadmin required"))
+        Err(crate::api::error::ApiError::forbidden(
+            "superadmin required",
+        ))
     }
 }
 
@@ -206,7 +203,10 @@ mod tests {
             "/api/v1/releases/first-release/sources",
             &Method::POST
         ));
-        assert!(!is_stage_plane_write("/api/v1/stages/prod/sources", &Method::GET));
+        assert!(!is_stage_plane_write(
+            "/api/v1/stages/prod/sources",
+            &Method::GET
+        ));
     }
 
     #[test]

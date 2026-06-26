@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from fastembed import TextEmbedding
 from fastembed.common.model_description import ModelSource, PoolingType
@@ -49,7 +51,7 @@ class Embedder:
         )
         self.tokenizer = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
 
-    def embed(self, texts: list[str]):
+    def embed(self, texts: list[str]) -> Iterable[Any]:
         return self.model.embed(texts)
 
 

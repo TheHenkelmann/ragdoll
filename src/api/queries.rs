@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::{Query, State};
+use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::api::batch::{BatchItemResult, BatchResponse};
@@ -73,11 +73,7 @@ pub async fn post_queries(
 
     let mut results = Vec::with_capacity(items.len());
     for (index, item) in items.into_iter().enumerate() {
-        match state
-            .search
-            .execute(&ctx, &settings, &item, &options)
-            .await
-        {
+        match state.search.execute(&ctx, &settings, &item, &options).await {
             Ok(result) => results.push(BatchItemResult::ok(index, result)),
             Err(err) => {
                 let _ = state
@@ -107,8 +103,8 @@ pub async fn get_queries(
     let mut bind: Vec<String> = Vec::new();
 
     if let Some(filter_raw) = params.filter {
-        let filter = decode_filter_param(&filter_raw)
-            .map_err(|e| ApiError::bad_request(e.to_string()))?;
+        let filter =
+            decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
         let compiled = crate::filter::compile_filter(&filter, "q")
             .map_err(|e| ApiError::bad_request(e.to_string()))?;
         where_clause = format!("q.release_id = '{}' AND {}", ctx.release_id, compiled.sql);
@@ -129,27 +125,33 @@ pub async fn get_queries(
         bind.len()
     );
 
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(&sql, bind)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let mut items = Vec::new();
-    while let Some(row) = rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         let playground: i64 = row.get(4).map_err(|e| ApiError::internal(e.to_string()))?;
         items.push(StoredQuery {
             id: row.get(0).map_err(|e| ApiError::internal(e.to_string()))?,
             text: row.get(1).ok(),
             filters: serde_json::from_str(
-                &row
-                    .get::<String>(2)
+                &row.get::<String>(2)
                     .map_err(|e| ApiError::internal(e.to_string()))?,
             )
             .unwrap_or(serde_json::json!({})),
             params: serde_json::from_str(
-                &row
-                    .get::<String>(3)
+                &row.get::<String>(3)
                     .map_err(|e| ApiError::internal(e.to_string()))?,
             )
             .unwrap_or(serde_json::json!({})),
@@ -178,14 +180,19 @@ pub async fn delete_queries(
     let filter_raw = params
         .filter
         .ok_or_else(|| ApiError::bad_request("filter query param required"))?;
-    let filter = decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let filter =
+        decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
     let compiled = crate::filter::compile_filter(&filter, "q")
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     let sql = format!(
         "DELETE FROM queries q WHERE q.release_id = '{}' AND {}",
         ctx.release_id, compiled.sql
     );
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     conn.execute(&sql, compiled.params)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
@@ -197,7 +204,11 @@ pub async fn get_query_detail(
     ctx: ReleaseCtx,
     axum::extract::Path(NestedPathId { id: query_id, .. }): axum::extract::Path<NestedPathId>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(
             "SELECT id, text, filters, params, playground, upstream_ms, embed_ms, search_ms, rerank_ms,
@@ -224,7 +235,11 @@ pub async fn get_query_detail(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut chunks = Vec::new();
-    while let Some(crow) = chunk_rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(crow) = chunk_rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         chunks.push(serde_json::json!({
             "step": crow.get::<String>(0).map_err(|e| ApiError::internal(e.to_string()))?,
             "rank": crow.get::<i64>(1).map_err(|e| ApiError::internal(e.to_string()))?,

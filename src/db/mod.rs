@@ -7,4 +7,4 @@ pub mod params;
 pub mod pool;
 
 pub use error::DbError;
-pub use pool::{DbPool, retry_on_locked};
+pub use pool::{retry_on_locked, DbPool};

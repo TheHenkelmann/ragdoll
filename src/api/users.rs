@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
-use axum::Json;
-use axum::Extension;
 use axum::extract::{Path, State};
+use axum::Extension;
+use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{AuthContext, hash_password, require_superadmin, validate_email};
+use crate::auth::{hash_password, require_superadmin, validate_email, AuthContext};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateUserRequest {
@@ -31,7 +31,11 @@ pub async fn get_users(
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Vec<UserRecord>>, ApiError> {
     require_superadmin(&auth)?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
         .query(
             "SELECT id, email, is_superadmin, created_at FROM users ORDER BY created_at DESC",
@@ -40,7 +44,11 @@ pub async fn get_users(
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut items = Vec::new();
-    while let Some(row) = rows.next().await.map_err(|e| ApiError::internal(e.to_string()))? {
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
         let is_superadmin: i64 = row.get(2).map_err(|e| ApiError::internal(e.to_string()))?;
         items.push(UserRecord {
             id: row.get(0).map_err(|e| ApiError::internal(e.to_string()))?,
@@ -63,7 +71,11 @@ pub async fn post_users(
     }
     let id = Uuid::new_v4().to_string();
     let hash = hash_password(&body.password).map_err(|e| ApiError::internal(e.to_string()))?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     conn.execute(
         "INSERT INTO users (id, email, password_hash, is_superadmin, password_is_default)
          VALUES (?1, ?2, ?3, 0, 0)",
@@ -87,9 +99,16 @@ pub async fn delete_user(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     require_superadmin(&auth)?;
-    let conn = state.pool.connect_one().await.map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let mut rows = conn
-        .query("SELECT is_superadmin FROM users WHERE id = ?1", [id.as_str()])
+        .query(
+            "SELECT is_superadmin FROM users WHERE id = ?1",
+            [id.as_str()],
+        )
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let row = rows

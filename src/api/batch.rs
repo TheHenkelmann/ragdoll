@@ -105,7 +105,11 @@ impl<T: Serialize> BatchItemResult<T> {
             index,
             status: status.as_u16(),
             result: None,
-            error: Some(ProblemDetails::new(status, status.canonical_reason().unwrap_or("Error"), detail)),
+            error: Some(ProblemDetails::new(
+                status,
+                status.canonical_reason().unwrap_or("Error"),
+                detail,
+            )),
         }
     }
 }
@@ -117,7 +121,10 @@ pub struct BatchResponse<T> {
 
 impl<T: Serialize> BatchResponse<T> {
     pub fn http_status(&self) -> StatusCode {
-        let all_ok = self.items.iter().all(|item| (200..300).contains(&item.status));
+        let all_ok = self
+            .items
+            .iter()
+            .all(|item| (200..300).contains(&item.status));
         let all_failed = self.items.iter().all(|item| item.status >= 400);
         if all_ok {
             StatusCode::OK

@@ -42,14 +42,21 @@ class WorkerDb:
             commit()
 
     def _apply_pragmas(self) -> None:
+        conn = self.connection
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 30000")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    @property
+    def connection(self) -> libsql.Connection:
+        if self.conn is None:
+            self.ensure_connected()
         assert self.conn is not None
-        self.conn.execute("PRAGMA journal_mode = WAL")
-        self.conn.execute("PRAGMA busy_timeout = 30000")
-        self.conn.execute("PRAGMA synchronous = NORMAL")
-        self.conn.execute("PRAGMA foreign_keys = ON")
+        return self.conn
 
     def fetch_settings(self, release_id: str) -> dict[str, Any]:
-        rows = self.conn.execute(
+        rows = self.connection.execute(
             "SELECT key, value FROM settings WHERE release_id = ?",
             (release_id,),
         ).fetchall()
@@ -62,7 +69,7 @@ class WorkerDb:
         return settings
 
     def claim_job(self, worker_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute(
+        row = self.connection.execute(
             """
             UPDATE ingest_jobs
             SET status = 'processing',
@@ -93,7 +100,7 @@ class WorkerDb:
         }
 
     def heartbeat(self, job_id: str, worker_id: str) -> None:
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE ingest_jobs
             SET heartbeat_at = datetime('now')
@@ -104,11 +111,11 @@ class WorkerDb:
         self._commit()
 
     def update_job_metrics(self, job_id: str, metrics: dict[str, int]) -> None:
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE ingest_jobs
-            SET queue_ms = ?, extract_ms = ?, chunk_ms = ?, embed_ms = ?, db_write_ms = ?, total_ms = ?,
-                chunk_count = ?, char_count = ?
+            SET queue_ms = ?, extract_ms = ?, chunk_ms = ?, embed_ms = ?,
+                db_write_ms = ?, total_ms = ?, chunk_count = ?, char_count = ?
             WHERE id = ?
             """,
             (
@@ -126,7 +133,7 @@ class WorkerDb:
         self._commit()
 
     def complete_job(self, job_id: str, source_id: str) -> None:
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE ingest_jobs
             SET status = 'completed', finished_at = datetime('now'), error = NULL
@@ -134,7 +141,7 @@ class WorkerDb:
             """,
             (job_id,),
         )
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE sources
             SET status = 'completed', updated_at = datetime('now'), error = NULL
@@ -146,7 +153,7 @@ class WorkerDb:
 
     def fail_job(self, job_id: str, source_id: str, error: str, retry: bool) -> None:
         status = "pending" if retry else "failed"
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE ingest_jobs
             SET status = ?, finished_at = datetime('now'), error = ?
@@ -154,7 +161,7 @@ class WorkerDb:
             """,
             (status, error, job_id),
         )
-        self.conn.execute(
+        self.connection.execute(
             """
             UPDATE sources
             SET status = ?, updated_at = datetime('now'), error = ?
@@ -165,7 +172,7 @@ class WorkerDb:
         self._commit()
 
     def fetch_source(self, source_id: str) -> dict[str, Any]:
-        row = self.conn.execute(
+        row = self.connection.execute(
             """
             SELECT id, release_id, name, type, uri, config, metadata
             FROM sources WHERE id = ?
@@ -193,13 +200,13 @@ class WorkerDb:
         embedding_dim: int,
         embedding_version: str,
     ) -> None:
-        self.conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
+        self.connection.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
         self._commit()
         batch_size = 50
         for start in range(0, len(chunks), batch_size):
             batch = chunks[start : start + batch_size]
             for ordinal, chunk in enumerate(batch, start=start):
-                self.conn.execute(
+                self.connection.execute(
                     """
                     INSERT INTO chunks (
                         id, release_id, source_id, ordinal, content, provenance, metadata,

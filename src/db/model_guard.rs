@@ -29,9 +29,8 @@ pub async fn ensure_committed_model(
 
     if let Some(row) = rows.next().await? {
         let value: String = row.get(0)?;
-        let committed: CommittedModel = serde_json::from_str(&value).map_err(|e| {
-            DbError::ModelGuard(format!("invalid committed model metadata: {e}"))
-        })?;
+        let committed: CommittedModel = serde_json::from_str(&value)
+            .map_err(|e| DbError::ModelGuard(format!("invalid committed model metadata: {e}")))?;
 
         if committed.name != expected_name || committed.dim != expected_dim {
             return Err(DbError::ModelGuard(format!(
@@ -99,9 +98,7 @@ async fn persist_committed_model(
 
 pub async fn run_model_guard(pool: &DbPool, config: &Config) -> Result<(), DbError> {
     let conn = pool.connect_one().await?;
-    let mut rows = conn
-        .query("SELECT id FROM releases", ())
-        .await?;
+    let mut rows = conn.query("SELECT id FROM releases", ()).await?;
 
     while let Some(row) = rows.next().await? {
         let release_id: String = row.get(0)?;
@@ -119,15 +116,12 @@ pub async fn run_model_guard(pool: &DbPool, config: &Config) -> Result<(), DbErr
             config.embedding_model.clone()
         };
 
-        ensure_committed_model(
-            pool,
-            &release_id,
-            &model_name,
-            config.embedding_dim as i64,
-        )
-        .await?;
+        ensure_committed_model(pool, &release_id, &model_name, config.embedding_dim as i64).await?;
     }
 
-    tracing::info!(dim = config.embedding_dim, "model guard passed for all releases");
+    tracing::info!(
+        dim = config.embedding_dim,
+        "model guard passed for all releases"
+    );
     Ok(())
 }

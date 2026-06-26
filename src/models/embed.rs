@@ -37,17 +37,12 @@ impl EmbedModel {
     pub async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         let mut model = self.inner.lock().await;
         let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
-        model
-            .embed(refs, None)
-            .with_context(|| "embed texts")
+        model.embed(refs, None).with_context(|| "embed texts")
     }
 
     pub async fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
         let vectors = self.embed(&[text.to_string()]).await?;
-        vectors
-            .into_iter()
-            .next()
-            .context("empty embedding result")
+        vectors.into_iter().next().context("empty embedding result")
     }
 }
 

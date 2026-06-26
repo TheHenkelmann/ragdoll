@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use crate::filter::dsl::{Condition, FilterError, FilterExpr, FilterOp, ResolvedField, resolve_field};
+use crate::filter::dsl::{
+    resolve_field, Condition, FilterError, FilterExpr, FilterOp, ResolvedField,
+};
 
 #[derive(Debug, Clone)]
 pub struct SqlFilter {
@@ -14,24 +16,38 @@ pub fn compile_filter(expr: &FilterExpr, table_alias: &str) -> Result<SqlFilter,
     Ok(SqlFilter { sql, params })
 }
 
-fn compile_expr(expr: &FilterExpr, alias: &str, params: &mut Vec<String>) -> Result<String, FilterError> {
+fn compile_expr(
+    expr: &FilterExpr,
+    alias: &str,
+    params: &mut Vec<String>,
+) -> Result<String, FilterError> {
     match expr {
         FilterExpr::And { and: items } => {
-            let parts: Result<Vec<_>, _> =
-                items.iter().map(|item| compile_expr(item, alias, params)).collect();
+            let parts: Result<Vec<_>, _> = items
+                .iter()
+                .map(|item| compile_expr(item, alias, params))
+                .collect();
             Ok(format!("({})", parts?.join(" AND ")))
         }
         FilterExpr::Or { or: items } => {
-            let parts: Result<Vec<_>, _> =
-                items.iter().map(|item| compile_expr(item, alias, params)).collect();
+            let parts: Result<Vec<_>, _> = items
+                .iter()
+                .map(|item| compile_expr(item, alias, params))
+                .collect();
             Ok(format!("({})", parts?.join(" OR ")))
         }
-        FilterExpr::Not { not: inner } => Ok(format!("NOT ({})", compile_expr(inner, alias, params)?)),
+        FilterExpr::Not { not: inner } => {
+            Ok(format!("NOT ({})", compile_expr(inner, alias, params)?))
+        }
         FilterExpr::Condition(cond) => compile_condition(cond, alias, params),
     }
 }
 
-fn compile_condition(cond: &Condition, alias: &str, params: &mut Vec<String>) -> Result<String, FilterError> {
+fn compile_condition(
+    cond: &Condition,
+    alias: &str,
+    params: &mut Vec<String>,
+) -> Result<String, FilterError> {
     let field = resolve_field(&cond.field)?;
     let sql_field = match &field {
         ResolvedField::Column(name) => format!("{alias}.{name}"),
@@ -45,7 +61,10 @@ fn compile_condition(cond: &Condition, alias: &str, params: &mut Vec<String>) ->
         FilterOp::Exists => {
             if let ResolvedField::Metadata(path) = field {
                 params.push(path);
-                Ok(format!("json_extract({alias}.metadata, ?{}) IS NOT NULL", params.len()))
+                Ok(format!(
+                    "json_extract({alias}.metadata, ?{}) IS NOT NULL",
+                    params.len()
+                ))
             } else {
                 Ok(format!("{sql_field} IS NOT NULL"))
             }
@@ -61,7 +80,9 @@ fn compile_condition(cond: &Condition, alias: &str, params: &mut Vec<String>) ->
                 .as_array()
                 .ok_or_else(|| FilterError::Validation("in/nin requires array".into()))?;
             if values.is_empty() {
-                return Err(FilterError::Validation("in/nin requires non-empty array".into()));
+                return Err(FilterError::Validation(
+                    "in/nin requires non-empty array".into(),
+                ));
             }
             let placeholders: Vec<String> = values
                 .iter()
@@ -70,7 +91,11 @@ fn compile_condition(cond: &Condition, alias: &str, params: &mut Vec<String>) ->
                     Ok(format!("?{}", params.len()))
                 })
                 .collect::<Result<_, FilterError>>()?;
-            let op = if matches!(cond.op, FilterOp::In) { "IN" } else { "NOT IN" };
+            let op = if matches!(cond.op, FilterOp::In) {
+                "IN"
+            } else {
+                "NOT IN"
+            };
             Ok(format!("{sql_field} {op} ({})", placeholders.join(", ")))
         }
         FilterOp::Eq => {
@@ -111,7 +136,7 @@ fn scalar_to_string(value: &serde_json::Value) -> Result<String, FilterError> {
     }
 }
 
-pub fn bind_params<'a>(sql_filter: &'a SqlFilter) -> Vec<libsql::Value> {
+pub fn bind_params(sql_filter: &SqlFilter) -> Vec<libsql::Value> {
     sql_filter
         .params
         .iter()

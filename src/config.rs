@@ -33,8 +33,8 @@ impl Config {
             .context("RAGDOLL_DATA_DIR is required")?
             .into();
 
-        let db_path = env_path("RAGDOLL_DB_PATH")
-            .unwrap_or_else(|| data_dir.join("db").join("ragdoll.db"));
+        let db_path =
+            env_path("RAGDOLL_DB_PATH").unwrap_or_else(|| data_dir.join("db").join("ragdoll.db"));
         let model_cache_dir =
             env_path("RAGDOLL_MODEL_CACHE_DIR").unwrap_or_else(|| data_dir.join("models"));
         let staging_dir =
@@ -48,8 +48,8 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("frontend/dist"));
 
-        let jwt_secret = std::env::var("RAGDOLL_JWT_SECRET")
-            .context("RAGDOLL_JWT_SECRET is required")?;
+        let jwt_secret =
+            std::env::var("RAGDOLL_JWT_SECRET").context("RAGDOLL_JWT_SECRET is required")?;
 
         Ok(Self {
             data_dir: data_dir.clone(),

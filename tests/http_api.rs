@@ -78,7 +78,11 @@ async fn list_releases_with_session_token() {
     assert_eq!(response.status(), StatusCode::OK);
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(json.as_array().unwrap().iter().any(|r| r["tag"] == "first-release"));
+    assert!(json
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["tag"] == "first-release"));
 }
 
 #[tokio::test]
@@ -150,7 +154,8 @@ async fn auth_info_is_public() {
 #[tokio::test]
 async fn auth_status_requires_session() {
     let app = setup_test_app().await;
-    let (status, json) = json_request(&app, "GET", "/api/v1/auth/status", None, Some(&app.token)).await;
+    let (status, json) =
+        json_request(&app, "GET", "/api/v1/auth/status", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["email"], "admin@ragdoll.ai");
     assert_eq!(json["is_superadmin"], true);
@@ -159,9 +164,14 @@ async fn auth_status_requires_session() {
 #[tokio::test]
 async fn login_rejects_invalid_email() {
     let app = setup_test_app().await;
-    let (status, _) =
-        json_request(&app, "POST", "/api/v1/auth/login", Some(r#"{"email":"bad","password":"x"}"#.into()), None)
-            .await;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/auth/login",
+        Some(r#"{"email":"bad","password":"x"}"#.into()),
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -191,8 +201,14 @@ async fn get_models_lists_whitelisted_models() {
 #[tokio::test]
 async fn get_release_settings_returns_defaults() {
     let app = setup_test_app().await;
-    let (status, json) =
-        json_request(&app, "GET", "/api/v1/releases/first-release/settings", None, Some(&app.token)).await;
+    let (status, json) = json_request(
+        &app,
+        "GET",
+        "/api/v1/releases/first-release/settings",
+        None,
+        Some(&app.token),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["chunking_strategy"], "semantic_split");
     assert_eq!(json["embedding_model"], "BAAI/bge-m3");
