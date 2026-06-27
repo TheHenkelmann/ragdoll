@@ -287,8 +287,8 @@ pub async fn test_webhook(
     };
     let body = payload.to_string();
     let ts = time::OffsetDateTime::now_utc().unix_timestamp().to_string();
-    let signature = crate::webhooks::sign_payload(&secret, &ts, &body)
-        .map_err(|e| ApiError::internal(e))?;
+    let signature =
+        crate::webhooks::sign_payload(&secret, &ts, &body).map_err(ApiError::internal)?;
     let client = Client::new();
     let response = client
         .post(&url)

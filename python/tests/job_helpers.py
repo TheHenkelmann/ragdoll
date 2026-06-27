@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb
 
 

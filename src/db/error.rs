@@ -20,4 +20,14 @@ impl DbError {
     pub fn is_locked(&self) -> bool {
         self.to_string().contains("database is locked")
     }
+
+    /// Transient libsql errors that are safe to retry during connection
+    /// acquisition. Besides plain lock contention, libsql can return
+    /// `SQLITE_MISUSE` ("bad parameter or other API misuse") when many
+    /// connections initialize concurrently (e.g. parallel test setup); this
+    /// clears on retry.
+    pub fn is_transient(&self) -> bool {
+        let msg = self.to_string();
+        self.is_locked() || msg.contains("bad parameter or other API misuse")
+    }
 }

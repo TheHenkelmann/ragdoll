@@ -13,7 +13,6 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::api::analytics::get_analytics;
-use crate::api::system_metrics::get_system_metrics;
 use crate::api::api_keys::{delete_api_key, get_api_keys, patch_api_key, post_api_keys};
 use crate::api::auth::{change_password, get_auth_info, get_status, post_login};
 use crate::api::backups::{
@@ -32,8 +31,8 @@ use crate::api::llm_models::{
 };
 use crate::api::models::{
     add_custom_model_handler, cancel_model_download, delete_custom_model_handler, delete_model,
-    download_model, get_models, get_models_status, purge_model_memory, purge_unreferenced_models,
-    stream_model_download, test_model,
+    delete_model_storage, download_model, get_models, get_models_status, get_models_storage,
+    purge_model_memory, purge_unreferenced_models, stream_model_download, test_model,
 };
 use crate::api::openapi::ApiDoc;
 use crate::api::queries::{
@@ -45,6 +44,7 @@ use crate::api::settings::{get_settings, patch_settings};
 use crate::api::sources::{post_sources, put_sources};
 use crate::api::sources_list::{delete_sources, get_sources, patch_source_metadata};
 use crate::api::stages::{create_stage, delete_stage, list_stages, update_stage};
+use crate::api::system_metrics::get_system_metrics;
 use crate::api::users::{delete_user, get_users, post_users, update_user};
 use crate::api::webhooks::{
     delete_webhook, get_webhook_secret, get_webhooks, patch_webhook, post_webhooks, test_webhook,
@@ -53,13 +53,13 @@ use crate::auth::middleware::auth_middleware;
 use crate::auth::rate_limit::{rate_limit_middleware, RateLimitStore};
 use crate::config::Config;
 use crate::crypto::Crypto;
+use crate::db::model_guard::EmbeddingMismatch;
 use crate::db::DbPool;
 use crate::generation::{GenaiGenerator, Generator, MockGenerator};
 use crate::models::download::ModelDownloadManager;
 use crate::models::{ModelProvider, ModelRegistry};
 use crate::release::{inject_playground_ctx, inject_release_ctx, inject_stage_ctx};
 use crate::search::SearchPipeline;
-use crate::db::model_guard::EmbeddingMismatch;
 use crate::settings::SettingsCache;
 
 pub const API_V1_PREFIX: &str = "/api/v1";
@@ -204,13 +204,24 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/stages/{tag}", patch(update_stage).delete(delete_stage))
         .route("/models", get(get_models))
         .route("/models/status", get(get_models_status))
+        .route("/models/storage", get(get_models_storage))
+        .route(
+            "/models/storage/{dir_name}",
+            axum::routing::delete(delete_model_storage),
+        )
         .route("/models/custom", post(add_custom_model_handler))
-        .route("/models/custom/{name}", axum::routing::delete(delete_custom_model_handler))
+        .route(
+            "/models/custom/{name}",
+            axum::routing::delete(delete_custom_model_handler),
+        )
         .route("/models/purge", post(purge_unreferenced_models))
         .route("/models/{name}", axum::routing::delete(delete_model))
         .route("/models/{name}/download", post(download_model))
         .route("/models/{name}/download/stream", get(stream_model_download))
-        .route("/models/{name}/download/cancel", post(cancel_model_download))
+        .route(
+            "/models/{name}/download/cancel",
+            post(cancel_model_download),
+        )
         .route("/models/{name}/purge", post(purge_model_memory))
         .route("/models/{name}/test", post(test_model))
         .route("/analytics", get(get_analytics))

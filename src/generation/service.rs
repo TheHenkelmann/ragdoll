@@ -12,6 +12,7 @@ use crate::release::ReleaseCtx;
 use crate::search::{QueryMatch, QueryResult};
 use crate::settings::RuntimeSettings;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn generate_answer(
     pool: &DbPool,
     crypto: &Crypto,

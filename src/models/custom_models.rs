@@ -23,10 +23,10 @@ pub fn load_custom_models(config: &Config) -> Result<Vec<String>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = std::fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
-    let file: CustomModelsFile = serde_json::from_str(&content)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let content =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let file: CustomModelsFile =
+        serde_json::from_str(&content).with_context(|| format!("parse {}", path.display()))?;
     Ok(file.models)
 }
 

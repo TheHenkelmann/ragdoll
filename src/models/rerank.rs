@@ -26,6 +26,7 @@ impl RerankModel {
         let mut instances = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
             let rerank = if let Ok(model_enum) = reranker_model_enum(model_name) {
+                crate::models::bootstrap::ensure_preset_cache_present(config, model_name)?;
                 TextRerank::try_new(
                     RerankInitOptions::new(model_enum)
                         .with_cache_dir(config.model_cache_dir.clone())

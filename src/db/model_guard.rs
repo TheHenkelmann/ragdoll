@@ -161,14 +161,7 @@ mod tests {
 
     #[test]
     fn no_chunks_means_no_mismatch() {
-        assert!(embedding_mismatch_for_release(
-            "rel-1",
-            "v1",
-            "BAAI/bge-m3",
-            &[],
-            1024,
-        )
-        .is_none());
+        assert!(embedding_mismatch_for_release("rel-1", "v1", "BAAI/bge-m3", &[], 1024,).is_none());
     }
 
     #[test]
@@ -216,7 +209,9 @@ mod tests {
             mismatch.chunks_model.as_deref(),
             Some("BAAI/bge-m3, mixedbread-ai/mxbai-embed-large-v1")
         );
-        assert!(mismatch.message.contains("some chunks still use other embedding models"));
+        assert!(mismatch
+            .message
+            .contains("some chunks still use other embedding models"));
     }
 
     #[test]
@@ -225,7 +220,10 @@ mod tests {
             "rel-1",
             "v1",
             "mixedbread-ai/mxbai-embed-large-v1",
-            &["BAAI/bge-m3".into(), "intfloat/multilingual-e5-large".into()],
+            &[
+                "BAAI/bge-m3".into(),
+                "intfloat/multilingual-e5-large".into(),
+            ],
             1024,
         )
         .expect("mismatch");

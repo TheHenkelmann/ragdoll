@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from job_helpers import insert_ingest_job
 
 from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb, _json_object
-from tests.job_helpers import insert_ingest_job
 
 
 def test_json_object_parses_string_payload() -> None:
@@ -247,7 +247,9 @@ def test_update_job_metrics_persists_values(worker_db: WorkerDb) -> None:
     )
     row = worker_db.conn.execute(
         """
-        SELECT queue_ms, extract_ms, chunk_ms, embed_ms, db_write_ms, total_ms, chunk_count, char_count
+        SELECT
+            queue_ms, extract_ms, chunk_ms, embed_ms,
+            db_write_ms, total_ms, chunk_count, char_count
         FROM ingest_jobs WHERE id = 'job-metrics'
         """,
     ).fetchone()

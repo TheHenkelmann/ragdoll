@@ -46,7 +46,7 @@ def dispatch_ingest_webhooks(
         "ts": int(time.time()),
     }
     body = json.dumps(payload, separators=(",", ":"))
-    for webhook_id, webhook_type, url, secret, events_raw in rows:
+    for webhook_id, _webhook_type, url, secret, events_raw in rows:
         try:
             events = json.loads(events_raw or "[]")
         except json.JSONDecodeError:
@@ -96,7 +96,8 @@ def _deliver_webhook(
         logger.warning("webhook delivery failed for %s: %s", webhook_id, exc)
     conn.execute(
         """
-        INSERT INTO webhook_deliveries (id, webhook_id, event, payload, status_code, response, error)
+        INSERT INTO webhook_deliveries
+            (id, webhook_id, event, payload, status_code, response, error)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (

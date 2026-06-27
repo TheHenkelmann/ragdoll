@@ -122,8 +122,7 @@ impl ModelDownloadManager {
         let guard = self.jobs.lock().unwrap();
         match guard.get(name) {
             Some(job)
-                if !job.done.load(Ordering::Relaxed)
-                    && job.cancellable.load(Ordering::Relaxed) =>
+                if !job.done.load(Ordering::Relaxed) && job.cancellable.load(Ordering::Relaxed) =>
             {
                 job.cancel.store(true, Ordering::Relaxed);
                 true
@@ -222,7 +221,7 @@ async fn run_download_job(
         if config.hf_hub_offline {
             let _ = tx.send(ModelDownloadEvent::Error {
                 name: name.clone(),
-                message: format!("model missing and HF_HUB_OFFLINE is enabled"),
+                message: "model missing and HF_HUB_OFFLINE is enabled".to_string(),
             });
             return;
         }
@@ -265,18 +264,12 @@ async fn run_download_job(
                 } else {
                     let cache_dirs_blocking = cache_dirs_poll.clone();
                     let initial_blocking = initial_size;
-                    match tokio::task::spawn_blocking(move || {
-                        let size: u64 = cache_dirs_blocking
-                            .iter()
-                            .map(|d| directory_size(d))
-                            .sum();
+                    tokio::task::spawn_blocking(move || {
+                        let size: u64 = cache_dirs_blocking.iter().map(|d| directory_size(d)).sum();
                         size.saturating_sub(initial_blocking)
                     })
                     .await
-                    {
-                        Ok(bytes) => bytes,
-                        Err(_) => 0,
-                    }
+                    .unwrap_or_default()
                 };
                 let _ = tx_poll.send(ModelDownloadEvent::Progress {
                     name: name_poll.clone(),

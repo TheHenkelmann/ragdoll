@@ -5,11 +5,11 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from job_helpers import insert_ingest_job
 
 from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb
 from ragdoll_worker.worker import _sqlite_ms_delta, process_job
-from tests.job_helpers import insert_ingest_job
 
 
 def test_sqlite_ms_delta_returns_zero_for_missing_values() -> None:
@@ -200,7 +200,10 @@ def test_process_job_preserves_existing_chunks_on_failure(
         INSERT OR REPLACE INTO chunks (
             id, release_id, source_id, ordinal, content, provenance, metadata,
             embedding, embedding_model, embedding_dim, embedding_version
-        ) VALUES ('old-chunk', ?, ?, 0, 'old chunk', '[]', '{}', vector32(?), 'BAAI/bge-m3', 1024, '1')
+        ) VALUES (
+            'old-chunk', ?, ?, 0, 'old chunk', '[]', '{}',
+            vector32(?), 'BAAI/bge-m3', 1024, '1'
+        )
         """,
         (release_id, source_id, str([0.0] * 1024)),
     )

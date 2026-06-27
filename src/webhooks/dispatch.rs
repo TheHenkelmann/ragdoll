@@ -76,6 +76,7 @@ pub async fn deliver_webhook(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn persist_delivery(
     pool: &DbPool,
     delivery_id: &str,

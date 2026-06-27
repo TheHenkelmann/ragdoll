@@ -137,10 +137,7 @@ pub fn load_strategy_for(name: &str) -> Option<LoadStrategy> {
 }
 
 pub fn all_supported_model_names() -> Vec<(&'static str, &'static str)> {
-    CATALOG
-        .iter()
-        .map(|e| (e.name, e.kind.as_str()))
-        .collect()
+    CATALOG.iter().map(|e| (e.name, e.kind.as_str())).collect()
 }
 
 #[cfg(test)]

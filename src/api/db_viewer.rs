@@ -87,7 +87,7 @@ pub async fn get_table(
         let filters: Vec<ColumnFilter> =
             serde_json::from_str(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
         for f in filters {
-            let compiled = compile_column_filter(&columns, &alias, &f)?;
+            let compiled = compile_column_filter(&columns, alias, &f)?;
             where_parts.push(compiled.0);
             bind.extend(compiled.1);
         }
@@ -144,7 +144,7 @@ pub async fn get_table(
     }
 
     let facets =
-        compute_facets(&state, &table, &alias, &columns, &where_clause, &bind, &ctx).await?;
+        compute_facets(&state, &table, alias, &columns, &where_clause, &bind, &ctx).await?;
 
     Ok(Json(DbTableResponse {
         columns,

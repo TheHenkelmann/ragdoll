@@ -290,7 +290,10 @@ class WorkerDb:
                 INSERT INTO sources (
                     id, release_id, name, type, uri, content_hash, config, metadata,
                     page_map, status, error, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', NULL, datetime('now'), datetime('now'))
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', NULL,
+                    datetime('now'), datetime('now')
+                )
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     type = excluded.type,

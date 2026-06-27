@@ -29,16 +29,12 @@ pub enum PayloadStorage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum DedupPolicy {
     Skip,
     Reject,
+    #[default]
     Replace,
-}
-
-impl Default for DedupPolicy {
-    fn default() -> Self {
-        Self::Replace
-    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -206,8 +202,8 @@ pub async fn patch_settings(
         .await?;
     }
     let settings = load_settings(pool, release_id).await?;
-    let require_models_present = updates.contains_key("embedding_model")
-        || updates.contains_key("rerank_model");
+    let require_models_present =
+        updates.contains_key("embedding_model") || updates.contains_key("rerank_model");
     validate_runtime_settings(&settings, config, require_models_present)?;
     Ok(settings)
 }

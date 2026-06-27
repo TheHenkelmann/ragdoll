@@ -22,6 +22,12 @@ use crate::generation::Generator;
 
 pub struct GenaiGenerator;
 
+impl Default for GenaiGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GenaiGenerator {
     pub fn new() -> Self {
         Self
@@ -97,7 +103,6 @@ impl GenaiGenerator {
         }
 
         let target_resolver = ServiceTargetResolver::from_resolver_fn({
-            let provider_adapter = provider_adapter;
             let endpoint = endpoint.clone();
             let api_key = api_key.clone();
             let model_name = model_name.clone();
@@ -111,11 +116,11 @@ impl GenaiGenerator {
                 } else {
                     AuthData::from_single(api_key.clone())
                 };
-                let resolved_adapter = resolved_endpoint
-                    .base_url()
-                    .contains("/responses")
-                    .then_some(AdapterKind::OpenAIResp)
-                    .unwrap_or(provider_adapter);
+                let resolved_adapter = if resolved_endpoint.base_url().contains("/responses") {
+                    AdapterKind::OpenAIResp
+                } else {
+                    provider_adapter
+                };
                 let model = ModelIden::new(resolved_adapter, model_name.clone());
                 Ok(ServiceTarget {
                     endpoint: resolved_endpoint,

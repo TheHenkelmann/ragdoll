@@ -34,12 +34,13 @@ pub async fn patch_settings(
     Json(body): Json<Map<String, Value>>,
 ) -> Result<Json<RuntimeSettings>, ApiError> {
     authorize(&auth, Permission::SettingsWrite)?;
-    let updated = crate::settings::patch_settings(&state.pool, &state.config, &ctx.release_id, &body)
-        .await
-        .map_err(|e| match e {
-            crate::db::DbError::InvalidInput(msg) => ApiError::bad_request(msg),
-            other => ApiError::internal(other.to_string()),
-        })?;
+    let updated =
+        crate::settings::patch_settings(&state.pool, &state.config, &ctx.release_id, &body)
+            .await
+            .map_err(|e| match e {
+                crate::db::DbError::InvalidInput(msg) => ApiError::bad_request(msg),
+                other => ApiError::internal(other.to_string()),
+            })?;
     state.settings_cache.invalidate(&ctx.release_id).await;
     Ok(Json(updated))
 }

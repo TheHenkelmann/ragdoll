@@ -119,9 +119,7 @@ def _parse_page_map(raw: Any) -> list[dict[str, int]]:
     return parsed if isinstance(parsed, list) else []
 
 
-def process_job(
-    db: WorkerDb, config: WorkerConfig, job: dict[str, Any]
-) -> None:
+def process_job(db: WorkerDb, config: WorkerConfig, job: dict[str, Any]) -> None:
     started = time.perf_counter()
     queue_ms = _sqlite_ms_delta(job.get("created_at"), job.get("started_at"))
     source = db.source_from_job(job)

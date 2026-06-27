@@ -49,7 +49,7 @@ fn extract_credential_secret(
     if provider == "vertex" {
         if let Some(json) = service_account_json.filter(|s| !s.trim().is_empty()) {
             crate::generation::vertex::validate_service_account_json(json)
-                .map_err(|e| ApiError::bad_request(&e.to_string()))?;
+                .map_err(|e| ApiError::bad_request(e.to_string()))?;
             return Ok(json.trim().to_string());
         }
         if let Some(key) = api_key.filter(|s| !s.trim().is_empty()) {

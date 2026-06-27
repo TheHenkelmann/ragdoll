@@ -54,7 +54,10 @@ pub fn collect_snapshot() -> SystemSnapshot {
     }
 }
 
-pub async fn persist_sample(pool: &DbPool, snapshot: &SystemSnapshot) -> Result<(), crate::db::DbError> {
+pub async fn persist_sample(
+    pool: &DbPool,
+    snapshot: &SystemSnapshot,
+) -> Result<(), crate::db::DbError> {
     let conn = pool.connect_one().await?;
     conn.execute(
         "INSERT INTO system_metrics (cpu_percent, memory_used_bytes, memory_total_bytes)
@@ -128,8 +131,12 @@ fn average_bucket(chunk: &[SystemMetricSample]) -> Option<SystemMetricSample> {
     let last = chunk.last()?;
     let count = chunk.len() as f64;
     let cpu_percent = chunk.iter().map(|s| s.cpu_percent).sum::<f64>() / count;
-    let memory_used_bytes =
-        (chunk.iter().map(|s| s.memory_used_bytes as f64).sum::<f64>() / count).round() as i64;
+    let memory_used_bytes = (chunk
+        .iter()
+        .map(|s| s.memory_used_bytes as f64)
+        .sum::<f64>()
+        / count)
+        .round() as i64;
     let memory_total_bytes = first.memory_total_bytes;
 
     Some(SystemMetricSample {
@@ -146,7 +153,8 @@ pub fn spawn_sampler(pool: DbPool) {
         let mut interval = tokio::time::interval(Duration::from_secs(1));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         interval.tick().await;
-        let mut alert_state = crate::webhooks::host_utilization::HostUtilizationAlertState::default();
+        let mut alert_state =
+            crate::webhooks::host_utilization::HostUtilizationAlertState::default();
 
         loop {
             interval.tick().await;

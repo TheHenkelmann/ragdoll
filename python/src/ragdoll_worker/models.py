@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path

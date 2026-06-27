@@ -61,7 +61,6 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
     spawn_backup_scheduler(state.clone());
     spawn_model_warmup(state.clone());
     spawn_model_cache_eviction(state.clone());
-    spawn_model_artifact_cleanup(state.clone());
     crate::system_metrics::spawn_sampler(state.pool.clone());
 
     let app = build_router(state);
@@ -104,12 +103,22 @@ fn spawn_model_warmup(state: std::sync::Arc<crate::api::router::AppState>) {
         // #region agent log
         {
             let required_names: Vec<String> = required.iter().cloned().collect();
-            dbg_log("D", "cli.rs:spawn_model_warmup", "startup warmup begins (will load each required model, holding registry lock)", serde_json::json!({"required": required_names, "count": required.len()}));
+            dbg_log(
+                "D",
+                "cli.rs:spawn_model_warmup",
+                "startup warmup begins (will load each required model, holding registry lock)",
+                serde_json::json!({"required": required_names, "count": required.len()}),
+            );
         }
         // #endregion
         for name in required {
             // #region agent log
-            dbg_log("D", "cli.rs:spawn_model_warmup", "warmup loading model", serde_json::json!({"model": name.as_str()}));
+            dbg_log(
+                "D",
+                "cli.rs:spawn_model_warmup",
+                "warmup loading model",
+                serde_json::json!({"model": name.as_str()}),
+            );
             // #endregion
             if is_supported_embed_model(&name) {
                 match state.models.embedder(&name).await {
@@ -162,39 +171,6 @@ fn spawn_model_cache_eviction(state: std::sync::Arc<crate::api::router::AppState
                 }
                 Err(err) => {
                     tracing::warn!(error = %err, "model cache eviction skipped");
-                }
-            }
-        }
-    });
-}
-
-fn spawn_model_artifact_cleanup(state: std::sync::Arc<crate::api::router::AppState>) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-        interval.tick().await;
-        loop {
-            interval.tick().await;
-            let mut protected = match models::collect_required_models(&state.pool).await {
-                Ok(required) => required,
-                Err(err) => {
-                    tracing::warn!(error = %err, "model artifact cleanup skipped");
-                    continue;
-                }
-            };
-            for name in state.model_downloads.list_active() {
-                protected.insert(name);
-            }
-            for name in state.models.list_loaded().await {
-                protected.insert(name);
-            }
-
-            match models::bootstrap::cleanup_stale_model_artifacts(&state.config, &protected) {
-                Ok(removed) if !removed.is_empty() => {
-                    tracing::info!(count = removed.len(), "cleaned stale model artifacts");
-                }
-                Ok(_) => {}
-                Err(err) => {
-                    tracing::warn!(error = %err, "model artifact cleanup failed");
                 }
             }
         }

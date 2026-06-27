@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from job_helpers import insert_ingest_job
+
 from ragdoll_worker.config import WorkerConfig
 from ragdoll_worker.db import WorkerDb
 from ragdoll_worker.reconcile import reconcile_jobs
-from tests.job_helpers import insert_ingest_job
 
 
 def test_reconcile_resets_stale_processing_job(

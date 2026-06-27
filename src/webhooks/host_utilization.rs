@@ -92,7 +92,10 @@ pub fn default_events_for_type(webhook_type: &str) -> Vec<String> {
             .filter(|event| !event.ends_with("_recovered"))
             .map(|event| event.to_string())
             .collect(),
-        _ => INGEST_STATUS_EVENTS.iter().map(|event| event.to_string()).collect(),
+        _ => INGEST_STATUS_EVENTS
+            .iter()
+            .map(|event| event.to_string())
+            .collect(),
     }
 }
 
@@ -104,7 +107,9 @@ pub fn validate_events(webhook_type: &str, events: &[String]) -> Result<(), Stri
     };
     for event in events {
         if !allowed.contains(&event.as_str()) {
-            return Err(format!("unsupported event '{event}' for type '{webhook_type}'"));
+            return Err(format!(
+                "unsupported event '{event}' for type '{webhook_type}'"
+            ));
         }
     }
     Ok(())
@@ -267,15 +272,7 @@ pub async fn dispatch_event(
             "ts": time::OffsetDateTime::now_utc().unix_timestamp(),
         });
         let body = payload.to_string();
-        deliver_webhook(
-            pool,
-            &webhook_id,
-            event.as_str(),
-            &url,
-            &secret,
-            &body,
-        )
-        .await;
+        deliver_webhook(pool, &webhook_id, event.as_str(), &url, &secret, &body).await;
     }
 
     Ok(())

@@ -54,7 +54,7 @@ describe("PlaygroundPage", () => {
     expect(screen.getByRole("button", { name: "Run query" })).toBeDisabled();
   });
 
-  it("enables run query when text is entered", () => {
+  it("enables run query when text is entered", async () => {
     setupMockFetch([...authRoutes(), ...metaRoutes()]);
     renderWithProviders(
       <Routes>
@@ -65,13 +65,18 @@ describe("PlaygroundPage", () => {
 
     expect(screen.getByRole("button", { name: "Run query" })).toBeDisabled();
     fireEvent.change(screen.getByPlaceholderText("Query text"), { target: { value: "hello" } });
-    expect(screen.getByRole("button", { name: "Run query" })).toBeEnabled();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Run query" })).toBeEnabled();
+    });
   });
 
   it("runs query and shows results timeline", async () => {
     renderPlayground();
 
     fireEvent.change(screen.getByPlaceholderText("Query text"), { target: { value: "hello" } });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Run query" })).toBeEnabled();
+    });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Run query" }));
     });

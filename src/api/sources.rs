@@ -186,7 +186,10 @@ async fn create_source_internal(
         anyhow::bail!("invalid source type");
     }
 
-    let proposed_source_id = item.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let proposed_source_id = item
+        .id
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
     let name = item.name.unwrap_or_else(|| proposed_source_id.clone());
 
     if item.source_type == "file" {

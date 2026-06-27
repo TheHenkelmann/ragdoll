@@ -52,9 +52,7 @@ pub fn reranker_model_enum(name: &str) -> Result<RerankerModel> {
 
 pub fn doc_prefix_for(model_name: &str) -> &'static str {
     match model_name {
-        "intfloat/multilingual-e5-large" | "intfloat/multilingual-e5-large-instruct" => {
-            "passage: "
-        }
+        "intfloat/multilingual-e5-large" | "intfloat/multilingual-e5-large-instruct" => "passage: ",
         _ => "",
     }
 }
@@ -82,8 +80,12 @@ mod tests {
 
     #[test]
     fn all_new_rerank_models_supported() {
-        assert!(is_supported_rerank_model("mixedbread-ai/mxbai-rerank-base-v1"));
-        assert!(is_supported_rerank_model("jinaai/jina-reranker-v2-base-multilingual"));
+        assert!(is_supported_rerank_model(
+            "mixedbread-ai/mxbai-rerank-base-v1"
+        ));
+        assert!(is_supported_rerank_model(
+            "jinaai/jina-reranker-v2-base-multilingual"
+        ));
     }
 
     #[test]

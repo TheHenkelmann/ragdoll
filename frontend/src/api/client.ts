@@ -347,6 +347,31 @@ export function getModelsStatus() {
   return api<ModelsStatusResponse>("/models/status");
 }
 
+export type StorageEntry = {
+  dir_name: string;
+  model_name: string | null;
+  kind: string;
+  size_bytes: number;
+  complete: boolean;
+  in_use: boolean;
+};
+
+export type ModelsStorageResponse = {
+  model_dir: string;
+  entries: StorageEntry[];
+};
+
+export function getModelsStorage() {
+  return api<ModelsStorageResponse>("/models/storage");
+}
+
+export function deleteModelStorage(dirName: string) {
+  return api<{ deleted: boolean; dir_name: string }>(
+    `/models/storage/${encodeURIComponent(dirName)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function addCustomModel(name: string) {
   return api<{ added: boolean; name: string }>("/models/custom", {
     method: "POST",

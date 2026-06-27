@@ -192,11 +192,7 @@ async fn get_sources_lists_committed_source() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(json
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|s| s["name"] == "demo"));
+    assert!(json.as_array().unwrap().iter().any(|s| s["name"] == "demo"));
 }
 
 #[tokio::test]
@@ -222,7 +218,7 @@ async fn post_replace_targets_existing_source_without_deleting() {
         &app,
         "POST",
         "/api/v1/releases/first-release/sources",
-        Some(body.into()),
+        Some(body),
         Some(&app.token),
     )
     .await;
@@ -238,7 +234,10 @@ async fn post_replace_targets_existing_source_without_deleting() {
         .is_empty());
 
     let mut chunk_rows = conn
-        .query("SELECT COUNT(*) FROM chunks WHERE source_id = ?1", [source_id])
+        .query(
+            "SELECT COUNT(*) FROM chunks WHERE source_id = ?1",
+            [source_id],
+        )
         .await
         .unwrap();
     let chunk_count: i64 = chunk_rows.next().await.unwrap().unwrap().get(0).unwrap();
@@ -279,7 +278,10 @@ async fn put_enqueues_job_without_deleting_existing_source() {
     assert_eq!(name, "demo");
 
     let mut chunk_rows = conn
-        .query("SELECT COUNT(*) FROM chunks WHERE source_id = ?1", [source_id])
+        .query(
+            "SELECT COUNT(*) FROM chunks WHERE source_id = ?1",
+            [source_id],
+        )
         .await
         .unwrap();
     let chunk_count: i64 = chunk_rows.next().await.unwrap().unwrap().get(0).unwrap();

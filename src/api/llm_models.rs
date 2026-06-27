@@ -244,7 +244,7 @@ fn validate_model_body(body: &UpsertLlmModelRequest) -> Result<(), ApiError> {
         &body.model_name,
         body.endpoint.as_deref(),
     )
-    .map_err(|e| ApiError::bad_request(&e.to_string()))?;
+    .map_err(|e| ApiError::bad_request(e.to_string()))?;
     Ok(())
 }
 
@@ -259,7 +259,7 @@ async fn find_model_id_by_tag(
             (tag, release_id),
         )
         .await?;
-    Ok(rows.next().await?.map(|row| row.get(0)).transpose()?)
+    rows.next().await?.map(|row| row.get(0)).transpose()
 }
 
 async fn insert_or_update_model(

@@ -8,10 +8,10 @@ use anyhow::{bail, Context, Result};
 use fastembed::{InitOptions, RerankInitOptions, TextEmbedding, TextRerank};
 
 use crate::config::Config;
-use crate::models::download::DownloadNotifier;
-use crate::models::download_io::copy_file_with_limits;
 use crate::db::{DbError, DbPool};
 use crate::models::catalog::{find_catalog_entry, LoadStrategy};
+use crate::models::download::DownloadNotifier;
+use crate::models::download_io::copy_file_with_limits;
 use crate::models::mapping::{
     all_supported_model_names, embedding_model_enum, is_supported_embed_model,
     is_supported_rerank_model, reranker_model_enum,
@@ -208,7 +208,14 @@ pub fn ensure_single_model_blocking(
     required: bool,
 ) -> Result<()> {
     let never_cancel = AtomicBool::new(false);
-    ensure_single_model_blocking_cancellable(config, model_name, required, &never_cancel, None, None)
+    ensure_single_model_blocking_cancellable(
+        config,
+        model_name,
+        required,
+        &never_cancel,
+        None,
+        None,
+    )
 }
 
 /// Like [`ensure_single_model_blocking`], but aborts as soon as `cancel` is set.
@@ -326,9 +333,87 @@ fn bootstrap_download(
     Ok(())
 }
 
+/// Self-heal for preset models: they load from the fastembed download cache
+/// (`models--<repo>`). If that cache is missing (e.g. it was deleted) repopulate
+/// it through the normal download path *before* the loader runs, so a load never
+/// silently fails or blocks on an ad-hoc fastembed re-download. No-op for
+/// user-defined models (they load from the canonical dir) and when offline.
+pub fn ensure_preset_cache_present(config: &Config, model_name: &str) -> Result<()> {
+    let is_preset =
+        embedding_model_enum(model_name).is_ok() || reranker_model_enum(model_name).is_ok();
+    if !is_preset {
+        return Ok(());
+    }
+    if find_fastembed_snapshot(&config.model_cache_dir, model_name).is_some() {
+        // #region agent log
+        dbg_log(
+            "G",
+            "bootstrap.rs:ensure_preset_cache_present",
+            "preset cache present, no download needed",
+            serde_json::json!({ "model": model_name }),
+        );
+        // #endregion
+        return Ok(());
+    }
+    if config.hf_hub_offline {
+        // Can't repopulate offline; let the loader surface a clear error.
+        return Ok(());
+    }
+    tracing::info!(
+        model = model_name,
+        "preset load cache missing; repopulating via download before load"
+    );
+    // #region agent log
+    dbg_log(
+        "G",
+        "bootstrap.rs:ensure_preset_cache_present",
+        "preset cache MISSING; repopulating via bootstrap_download",
+        serde_json::json!({ "model": model_name }),
+    );
+    // #endregion
+    let never_cancel = AtomicBool::new(false);
+    let dir = config.model_dir_for(model_name);
+    std::fs::create_dir_all(&dir).with_context(|| format!("create model dir {}", dir.display()))?;
+    let result = bootstrap_download(config, model_name, &dir, &never_cancel, None, None);
+    // #region agent log
+    dbg_log(
+        "G",
+        "bootstrap.rs:ensure_preset_cache_present",
+        "repopulate download finished",
+        serde_json::json!({ "model": model_name, "ok": result.is_ok(), "err": result.as_ref().err().map(|e| e.to_string()) }),
+    );
+    // #endregion
+    result
+}
+
+// #region agent log
+fn dbg_log(hyp: &str, location: &str, message: &str, data: serde_json::Value) {
+    use std::io::Write;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let line = serde_json::json!({
+        "sessionId": "a04a75",
+        "runId": "post-fix",
+        "hypothesisId": hyp,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": ts,
+    });
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/Users/henkelmann/Documents/PRIVAT/henley/.cursor/debug-a04a75.log")
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+// #endregion
+
 fn is_user_defined_model(model_name: &str) -> bool {
-    find_catalog_entry(model_name)
-        .is_some_and(|e| e.load_strategy == LoadStrategy::UserDefined)
+    find_catalog_entry(model_name).is_some_and(|e| e.load_strategy == LoadStrategy::UserDefined)
         || (is_supported_embed_model(model_name) && embedding_model_enum(model_name).is_err())
         || (is_supported_rerank_model(model_name) && reranker_model_enum(model_name).is_err())
 }
@@ -358,9 +443,7 @@ fn hf_download_client(config: &Config) -> Result<reqwest::blocking::Client> {
             headers
         });
     }
-    builder
-        .build()
-        .context("build HF download client")
+    builder.build().context("build HF download client")
 }
 
 pub fn download_user_defined_from_hf(
@@ -374,18 +457,13 @@ pub fn download_user_defined_from_hf(
         .with_context(|| format!("create model dir {}", target_dir.display()))?;
 
     let client = hf_download_client(config)?;
-    let url = format!(
-        "https://huggingface.co/api/models/{model_name}/tree/main?recursive=true"
-    );
+    let url = format!("https://huggingface.co/api/models/{model_name}/tree/main?recursive=true");
     let resp = client
         .get(&url)
         .send()
         .with_context(|| format!("fetch HF tree for {model_name}"))?;
     if !resp.status().is_success() {
-        bail!(
-            "HF tree API returned {} for {model_name}",
-            resp.status()
-        );
+        bail!("HF tree API returned {} for {model_name}", resp.status());
     }
     let body = resp.text().context("read HF tree response")?;
     let entries: Vec<HfTreeEntry> =
@@ -434,9 +512,8 @@ pub fn download_user_defined_from_hf(
         }
         let local_name = remote_path.rsplit('/').next().unwrap_or(remote_path);
         let local_path = target_dir.join(local_name);
-        let download_url = format!(
-            "https://huggingface.co/{model_name}/resolve/main/{remote_path}"
-        );
+        let download_url =
+            format!("https://huggingface.co/{model_name}/resolve/main/{remote_path}");
         // Stream the response body straight to disk instead of buffering the
         // whole (potentially multi-GB) file in memory. Writing incrementally
         // also lets the directory-size progress poller observe real progress.
@@ -638,38 +715,31 @@ fn is_canonical_cache_dir_name(dir_name: &str) -> bool {
     dir_name.contains("__") && !dir_name.starts_with("models--")
 }
 
-/// Remove incomplete model directories and redundant Hugging Face cache trees.
-///
-/// A directory is never removed when its model id is in `protected` (release settings,
-/// active downloads, or loaded in gateway RAM). Complete canonical model directories
-/// are always kept, even when not protected.
-pub fn cleanup_stale_model_artifacts(
-    config: &Config,
-    protected: &HashSet<String>,
-) -> Result<Vec<PathBuf>> {
-    let mut removed = Vec::new();
-    let entries = match std::fs::read_dir(&config.model_cache_dir) {
-        Ok(entries) => entries,
-        Err(_) => return Ok(removed),
+/// A single directory entry under `model_cache_dir`, for the manual storage UI.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StorageEntry {
+    /// Directory name on disk (e.g. `BAAI__bge-m3` or `models--rozgo--bge-reranker-v2-m3`).
+    pub dir_name: String,
+    /// Best-effort Hugging Face model id this directory belongs to, if recognizable.
+    pub model_name: Option<String>,
+    /// `canonical` (materialized model), `hf_cache` (fastembed/HF download cache), or `other`.
+    pub kind: String,
+    /// Total size on disk in bytes.
+    pub size_bytes: u64,
+    /// Whether this is a complete, loadable canonical model directory.
+    pub complete: bool,
+    /// Whether the model is currently referenced by a release or loaded in RAM.
+    pub in_use: bool,
+}
+
+/// List every directory under `model_cache_dir` so the user can manage disk usage
+/// manually. `in_use` reflects models that are release-referenced or loaded in RAM.
+pub fn list_storage_entries(config: &Config, in_use: &HashSet<String>) -> Vec<StorageEntry> {
+    let mut entries = Vec::new();
+    let Ok(read_dir) = std::fs::read_dir(&config.model_cache_dir) else {
+        return entries;
     };
-
-    // HF download caches (`models--<repo>`) that preset loaders still read from.
-    // fastembed loads presets via the enum + `with_cache_dir` path, so the cache
-    // is NOT redundant for a model that is present on disk or in use. Several
-    // presets download from a mirror repo whose id differs from the catalog name
-    // (e.g. BAAI/bge-reranker-v2-m3 -> models--rozgo--bge-reranker-v2-m3), so we
-    // must protect those slugs explicitly or every load re-downloads from HF.
-    let mut needed_cache_slugs: HashSet<String> = HashSet::new();
-    for name in protected {
-        needed_cache_slugs.extend(hf_cache_slugs(name));
-    }
-    for (preset_name, _kind) in all_supported_model_names() {
-        if model_is_complete(&config.model_dir_for(preset_name)) {
-            needed_cache_slugs.extend(hf_cache_slugs(preset_name));
-        }
-    }
-
-    for entry in entries.flatten() {
+    for entry in read_dir.flatten() {
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -677,59 +747,58 @@ pub fn cleanup_stale_model_artifacts(
         let dir_name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("");
-
-        let model_name = model_name_from_cache_dir_name(dir_name);
-        if model_name
-            .as_ref()
-            .is_some_and(|name| protected.contains(name))
-        {
+            .unwrap_or("")
+            .to_string();
+        if dir_name.is_empty() {
             continue;
         }
-
-        // Keep HF caches that a present/in-use preset model loads from.
-        if needed_cache_slugs.contains(dir_name) {
-            continue;
-        }
-
-        let should_remove = if is_hf_cache_dir_name(dir_name) {
-            // Redundant fastembed/HF download cache, or a failed partial download.
-            true
-        } else if is_canonical_cache_dir_name(dir_name) {
-            // Keep fully materialized models; drop incomplete canonical dirs only.
-            !model_is_complete(&path)
+        let model_name =
+            read_model_id_file(&path).or_else(|| model_name_from_cache_dir_name(&dir_name));
+        let kind = if is_hf_cache_dir_name(&dir_name) {
+            "hf_cache"
+        } else if is_canonical_cache_dir_name(&dir_name) {
+            "canonical"
         } else {
-            false
+            "other"
         };
-
-        if !should_remove {
-            continue;
-        }
-
-        match std::fs::remove_dir_all(&path) {
-            Ok(()) => {
-                tracing::info!(
-                    path = %path.display(),
-                    model = model_name.as_deref().unwrap_or(""),
-                    "removed stale model artifacts"
-                );
-                removed.push(path);
-            }
-            Err(err) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %err,
-                    "failed to remove stale model artifacts"
-                );
-            }
-        }
+        let complete = model_is_complete(&path);
+        let entry_in_use = model_name
+            .as_ref()
+            .is_some_and(|name| in_use.contains(name));
+        entries.push(StorageEntry {
+            dir_name,
+            model_name,
+            kind: kind.to_string(),
+            size_bytes: crate::models::download::directory_size(&path),
+            complete,
+            in_use: entry_in_use,
+        });
     }
+    entries.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+    entries
+}
 
-    Ok(removed)
+/// Delete a single directory under `model_cache_dir` by its on-disk name. The name
+/// is validated to be a direct child of the cache dir (no path traversal).
+pub fn delete_storage_entry(config: &Config, dir_name: &str) -> Result<()> {
+    if dir_name.is_empty()
+        || dir_name.contains('/')
+        || dir_name.contains('\\')
+        || dir_name.contains("..")
+    {
+        bail!("invalid storage entry name: {dir_name}");
+    }
+    let path = config.model_cache_dir.join(dir_name);
+    if !path.is_dir() {
+        bail!("storage entry not found: {dir_name}");
+    }
+    std::fs::remove_dir_all(&path)
+        .with_context(|| format!("remove storage entry {}", path.display()))?;
+    Ok(())
 }
 
 #[cfg(test)]
-mod cleanup_tests {
+mod storage_tests {
     use super::*;
     use std::fs;
 
@@ -737,15 +806,6 @@ mod cleanup_tests {
         let mut config = Config::for_test(root.to_path_buf(), "secret");
         config.model_cache_dir = root.join("models");
         config
-    }
-
-    fn write_complete_model(dir: &Path, model_name: &str) {
-        fs::create_dir_all(dir).unwrap();
-        fs::write(dir.join("model.onnx"), b"onnx").unwrap();
-        for file in TOKENIZER_FILES {
-            fs::write(dir.join(file), b"{}").unwrap();
-        }
-        fs::write(dir.join(".model-id"), model_name).unwrap();
     }
 
     #[test]
@@ -761,69 +821,51 @@ mod cleanup_tests {
     }
 
     #[test]
-    fn cleanup_removes_incomplete_canonical_dir() {
+    fn list_storage_marks_in_use_and_kind() {
         let root = tempfile::tempdir().unwrap();
         let config = test_config(root.path());
-        fs::create_dir_all(&config.model_cache_dir).unwrap();
-        let partial = config.model_dir_for("org/partial");
-        fs::create_dir_all(&partial).unwrap();
-        fs::write(partial.join("model.onnx"), b"x").unwrap();
-
-        let removed = cleanup_stale_model_artifacts(&config, &HashSet::new()).unwrap();
-        assert_eq!(removed.len(), 1);
-        assert!(!partial.exists());
-    }
-
-    #[test]
-    fn cleanup_keeps_complete_canonical_dir() {
-        let root = tempfile::tempdir().unwrap();
-        let config = test_config(root.path());
-        fs::create_dir_all(&config.model_cache_dir).unwrap();
-        let complete = config.model_dir_for("org/complete");
-        write_complete_model(&complete, "org/complete");
-
-        let removed = cleanup_stale_model_artifacts(&config, &HashSet::new()).unwrap();
-        assert!(removed.is_empty());
-        assert!(complete.exists());
-    }
-
-    #[test]
-    fn cleanup_keeps_protected_incomplete_dir() {
-        let root = tempfile::tempdir().unwrap();
-        let config = test_config(root.path());
-        fs::create_dir_all(&config.model_cache_dir).unwrap();
-        let partial = config.model_dir_for("org/active");
-        fs::create_dir_all(&partial).unwrap();
-
-        let mut protected = HashSet::new();
-        protected.insert("org/active".to_string());
-        let removed = cleanup_stale_model_artifacts(&config, &protected).unwrap();
-        assert!(removed.is_empty());
-        assert!(partial.exists());
-    }
-
-    #[test]
-    fn cleanup_removes_redundant_hf_cache_when_canonical_complete() {
-        let root = tempfile::tempdir().unwrap();
-        let config = test_config(root.path());
-        fs::create_dir_all(&config.model_cache_dir).unwrap();
-        write_complete_model(&config.model_dir_for("org/ready"), "org/ready");
-        let hf_cache = config
+        let canonical = config.model_dir_for("BAAI/bge-m3");
+        fs::create_dir_all(&canonical).unwrap();
+        fs::write(canonical.join("model.onnx"), b"onnx").unwrap();
+        let hf = config
             .model_cache_dir
-            .join("models--org--ready")
-            .join("snapshots")
-            .join("abc");
-        fs::create_dir_all(&hf_cache).unwrap();
-        fs::write(hf_cache.join("model.onnx"), b"x").unwrap();
+            .join("models--rozgo--bge-reranker-v2-m3");
+        fs::create_dir_all(&hf).unwrap();
 
-        let removed = cleanup_stale_model_artifacts(&config, &HashSet::new()).unwrap();
-        assert_eq!(removed.len(), 1);
-        assert!(
-            !config
-                .model_cache_dir
-                .join("models--org--ready")
-                .exists()
-        );
-        assert!(config.model_dir_for("org/ready").exists());
+        let mut in_use = HashSet::new();
+        in_use.insert("BAAI/bge-m3".to_string());
+        let entries = list_storage_entries(&config, &in_use);
+
+        let canonical_entry = entries
+            .iter()
+            .find(|e| e.dir_name == "BAAI__bge-m3")
+            .unwrap();
+        assert_eq!(canonical_entry.kind, "canonical");
+        assert!(canonical_entry.in_use);
+        let hf_entry = entries
+            .iter()
+            .find(|e| e.dir_name == "models--rozgo--bge-reranker-v2-m3")
+            .unwrap();
+        assert_eq!(hf_entry.kind, "hf_cache");
+        assert!(!hf_entry.in_use);
+    }
+
+    #[test]
+    fn delete_storage_entry_rejects_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let config = test_config(root.path());
+        fs::create_dir_all(&config.model_cache_dir).unwrap();
+        assert!(delete_storage_entry(&config, "../secrets").is_err());
+        assert!(delete_storage_entry(&config, "missing").is_err());
+    }
+
+    #[test]
+    fn delete_storage_entry_removes_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let config = test_config(root.path());
+        let dir = config.model_cache_dir.join("models--org--x");
+        fs::create_dir_all(&dir).unwrap();
+        assert!(delete_storage_entry(&config, "models--org--x").is_ok());
+        assert!(!dir.exists());
     }
 }

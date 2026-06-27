@@ -17,11 +17,14 @@ use crate::auth::{authorize, AuthContext, Permission};
 use crate::config::Config;
 use crate::db::model_guard::EmbeddingMismatch;
 use crate::models::bootstrap::{
-    collect_required_models, delete_local_model, ensure_single_model_public, is_valid_hf_model_name,
-    list_local_models, list_supported_models, model_is_complete,
+    collect_required_models, delete_local_model, delete_storage_entry, ensure_single_model_public,
+    is_valid_hf_model_name, list_local_models, list_storage_entries, list_supported_models,
+    model_is_complete, StorageEntry,
 };
 use crate::models::catalog::predefined_catalog;
-use crate::models::custom_models::{add_custom_model, is_custom_model, load_custom_models, remove_custom_model};
+use crate::models::custom_models::{
+    add_custom_model, is_custom_model, load_custom_models, remove_custom_model,
+};
 use crate::models::download::test_model_inference;
 use crate::models::mapping::{is_supported_embed_model, is_supported_rerank_model};
 use crate::models::registry::ModelRegistry;
@@ -133,7 +136,9 @@ async fn build_models_status(state: &AppState) -> Result<ModelsStatusResponse, A
                 present,
                 releases: release_map.get(entry.name).cloned().unwrap_or_default(),
                 loaded: is_loaded,
-                ram_bytes: is_loaded.then(|| ModelRegistry::estimate_ram_bytes(&state.config, entry.name)).flatten(),
+                ram_bytes: is_loaded
+                    .then(|| ModelRegistry::estimate_ram_bytes(&state.config, entry.name))
+                    .flatten(),
                 custom: false,
             }
         })
@@ -300,8 +305,7 @@ pub async fn delete_custom_model_handler(
             "model {name} is not a custom catalog entry"
         )));
     }
-    remove_custom_model(&state.config, &name)
-        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    remove_custom_model(&state.config, &name).map_err(|e| ApiError::bad_request(e.to_string()))?;
     Ok(Json(serde_json::json!({ "removed": true, "name": name })))
 }
 
@@ -327,8 +331,7 @@ pub async fn delete_model(
     if !is_allowed_model_name(&state.config, &name) {
         return Err(ApiError::bad_request(format!("invalid model name: {name}")));
     }
-    delete_local_model(&state.config, &name)
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+    delete_local_model(&state.config, &name).map_err(|e| ApiError::internal(e.to_string()))?;
     let (purged_embedders, purged_rerankers) = state.models.purge_model(&name).await;
     Ok(Json(serde_json::json!({
         "deleted": true,
@@ -346,8 +349,7 @@ pub async fn purge_unreferenced_models(
     let required = collect_required_models(&state.pool)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
-    let (purged_embedders, purged_rerankers) =
-        state.models.evict_unreferenced(&required).await;
+    let (purged_embedders, purged_rerankers) = state.models.evict_unreferenced(&required).await;
     Ok(Json(PurgeModelsResponse {
         purged_embedders,
         purged_rerankers,
@@ -368,6 +370,49 @@ pub async fn purge_model_memory(
     }))
 }
 
+#[derive(serde::Serialize)]
+pub struct ModelsStorageResponse {
+    pub model_dir: String,
+    pub entries: Vec<StorageEntry>,
+}
+
+pub async fn get_models_storage(
+    State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
+) -> Result<Json<ModelsStorageResponse>, ApiError> {
+    authorize(&auth, Permission::ModelsRead)?;
+    let mut in_use = collect_required_models(&state.pool)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    for name in state.models.list_loaded().await {
+        in_use.insert(name);
+    }
+    for name in state.model_downloads.list_active() {
+        in_use.insert(name);
+    }
+    Ok(Json(ModelsStorageResponse {
+        model_dir: state.config.model_cache_dir.display().to_string(),
+        entries: list_storage_entries(&state.config, &in_use),
+    }))
+}
+
+pub async fn delete_model_storage(
+    State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
+    Path(dir_name): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    authorize(&auth, Permission::ModelsDelete)?;
+    // Free any in-RAM session for this directory's model so disk + memory stay consistent.
+    if let Some(model_name) = crate::models::bootstrap::model_name_from_cache_dir_name(&dir_name) {
+        state.models.purge_model(&model_name).await;
+    }
+    delete_storage_entry(&state.config, &dir_name)
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    Ok(Json(
+        serde_json::json!({ "deleted": true, "dir_name": dir_name }),
+    ))
+}
+
 pub async fn cancel_model_download(
     State(state): State<Arc<AppState>>,
     Extension(auth): Extension<AuthContext>,
@@ -376,7 +421,9 @@ pub async fn cancel_model_download(
     authorize(&auth, Permission::ModelsDownload)?;
     validate_model_name(&state.config, &name)?;
     let cancelled = state.model_downloads.cancel(&name);
-    Ok(Json(serde_json::json!({ "cancelled": cancelled, "name": name })))
+    Ok(Json(
+        serde_json::json!({ "cancelled": cancelled, "name": name }),
+    ))
 }
 
 pub async fn stream_model_download(
@@ -450,9 +497,7 @@ fn validate_model_name(config: &Config, name: &str) -> Result<(), ApiError> {
 }
 
 fn is_allowed_model_name(config: &Config, name: &str) -> bool {
-    is_whitelisted(name)
-        || is_custom_model(config, name)
-        || is_valid_hf_model_name(name)
+    is_whitelisted(name) || is_custom_model(config, name) || is_valid_hf_model_name(name)
 }
 
 fn model_kind(name: &str) -> &'static str {

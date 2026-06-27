@@ -85,7 +85,7 @@ where
     for attempt in 0..MAX_LOCKED_ATTEMPTS {
         match operation().await {
             Ok(value) => return Ok(value),
-            Err(err) if err.is_locked() && attempt + 1 < MAX_LOCKED_ATTEMPTS => {
+            Err(err) if err.is_transient() && attempt + 1 < MAX_LOCKED_ATTEMPTS => {
                 last_err = Some(err);
                 tokio::time::sleep(std::time::Duration::from_millis(50 * (attempt as u64 + 1)))
                     .await;

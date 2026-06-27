@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
 use crate::auth::{authorize, AuthContext, Permission};
-use crate::system_metrics::{collect_snapshot, downsample_for_chart, fetch_samples, SystemMetricSample, SystemSnapshot};
+use crate::system_metrics::{
+    collect_snapshot, downsample_for_chart, fetch_samples, SystemMetricSample, SystemSnapshot,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct SystemMetricsParams {

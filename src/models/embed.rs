@@ -4,9 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use fastembed::{
-    InitOptionsUserDefined, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
-};
+use fastembed::{InitOptionsUserDefined, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel};
 use tokio::sync::Mutex;
 
 use crate::config::Config;
@@ -23,6 +21,7 @@ pub struct EmbedModel {
 impl EmbedModel {
     pub fn new(config: &Config, model_name: &str) -> Result<Self> {
         let embedding = if embedding_model_enum(model_name).is_ok() {
+            crate::models::bootstrap::ensure_preset_cache_present(config, model_name)?;
             let model_enum = embedding_model_enum(model_name)?;
             TextEmbedding::try_new(
                 fastembed::TextInitOptions::new(model_enum)

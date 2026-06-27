@@ -5,9 +5,12 @@ import { Link } from "react-router-dom";
 import {
   CatalogStatusEntry,
   ModelsStatusResponse,
+  StorageEntry,
   addCustomModel,
   deleteModel,
+  deleteModelStorage,
   getModelsStatus,
+  getModelsStorage,
   purgeModelMemory,
   testModel,
 } from "../api/client";
@@ -154,6 +157,14 @@ function DownloadStatusCell({
   return <span className="text-[var(--muted)]">Not downloaded</span>;
 }
 
+function formatBytes(bytes: number): string {
+  const GB = 1_073_741_824;
+  const MB = 1_048_576;
+  if (bytes >= GB) return `${(bytes / GB).toFixed(1)} GB`;
+  if (bytes >= MB) return `${(bytes / MB).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
 function validateCustomModel(name: string): string | null {
   const parts = name.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
@@ -174,6 +185,20 @@ export function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [storage, setStorage] = useState<StorageEntry[]>([]);
+  const [storageDir, setStorageDir] = useState<string>("");
+
+  const reloadStorage = useCallback(() => {
+    if (!canRead) return;
+    void getModelsStorage()
+      .then((res) => {
+        setStorage(res.entries);
+        setStorageDir(res.model_dir);
+      })
+      .catch(() => {
+        /* storage list is best-effort; ignore errors */
+      });
+  }, [canRead]);
 
   const reload = useCallback(() => {
     if (!canRead) {
@@ -186,7 +211,8 @@ export function ModelsPage() {
       .then(setData)
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
-  }, [canRead]);
+    reloadStorage();
+  }, [canRead, reloadStorage]);
 
   const { rowState, startDownload, cancelDownload, reconnectActive, setRow } = useModelDownloads({
     onComplete: (name) => {
@@ -265,6 +291,26 @@ export function ModelsPage() {
       .catch((err) => {
         setError(String(err));
         snackbar.error("Delete failed", `${row.name}: ${String(err)}`);
+      });
+  }
+
+  function handleDeleteStorage(entry: StorageEntry) {
+    const warn = entry.in_use
+      ? "\n\nWARNING: this directory belongs to a model that is in use (release-referenced, loaded, or downloading). Deleting it can break search or force a re-download."
+      : "";
+    if (
+      !window.confirm(
+        `Permanently delete this directory from model storage?\n\n${entry.dir_name}${warn}`,
+      )
+    )
+      return;
+    void deleteModelStorage(entry.dir_name)
+      .then(() => {
+        snackbar.success("Storage entry deleted", entry.dir_name);
+        reload();
+      })
+      .catch((err) => {
+        snackbar.error("Delete failed", `${entry.dir_name}: ${String(err)}`);
       });
   }
 
@@ -482,6 +528,79 @@ export function ModelsPage() {
           </table>
           {sortedRows.length === 0 && (
             <p className="p-4 text-sm text-[var(--muted)]">No models match your search.</p>
+          )}
+        </div>
+      )}
+
+      {canRead && (
+        <div className="space-y-2">
+          <h3 className="inline-flex items-center gap-2 text-lg font-semibold">
+            Model storage
+            <InfoTip
+              text={
+                "Every directory under the model storage folder, including fastembed/HF download caches. " +
+                "Nothing here is deleted automatically — remove anything you don't need to reclaim disk. " +
+                "Entries marked 'in use' are referenced by a release, loaded in RAM, or downloading."
+              }
+              wide
+            />
+          </h3>
+          {storageDir && (
+            <p className="font-mono text-xs text-[var(--muted)] break-all">{storageDir}</p>
+          )}
+          {storage.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">No model files on disk.</p>
+          ) : (
+            <div className="card overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <th className="px-2 py-2 text-left font-medium">Directory</th>
+                    <th className="px-2 py-2 text-left font-medium">Model</th>
+                    <th className="px-2 py-2 text-left font-medium">Kind</th>
+                    <th className="px-2 py-2 text-right font-medium">Size</th>
+                    <th className="px-2 py-2 text-left font-medium">In use</th>
+                    <th className="px-2 py-2 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storage.map((entry) => (
+                    <tr key={entry.dir_name} className="border-b" style={{ borderColor: "var(--border)" }}>
+                      <td className="px-2 py-2 font-mono text-xs break-all">{entry.dir_name}</td>
+                      <td className="px-2 py-2 font-mono text-xs text-[var(--muted)]">
+                        {entry.model_name ?? "—"}
+                      </td>
+                      <td className="px-2 py-2 text-xs">
+                        {entry.kind === "hf_cache"
+                          ? "download cache"
+                          : entry.kind === "canonical"
+                            ? "model"
+                            : "other"}
+                      </td>
+                      <td className="px-2 py-2 text-right text-xs">{formatBytes(entry.size_bytes)}</td>
+                      <td className="px-2 py-2 text-xs">
+                        {entry.in_use ? (
+                          <span className="text-[var(--text)]">in use</span>
+                        ) : (
+                          <span className="text-[var(--muted)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs text-error"
+                            onClick={() => handleDeleteStorage(entry)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

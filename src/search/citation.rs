@@ -33,6 +33,7 @@ struct PageMapEntry {
     end: i64,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_citation(
     chunk_id: &str,
     embedding_version: &str,
