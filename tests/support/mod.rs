@@ -6,7 +6,9 @@ use std::sync::Arc;
 use ragdoll::api::router::{build_router, build_state_with_provider, AppState};
 use ragdoll::auth::{encode_api_key_token, encode_session_token, ensure_superadmin, hash_password};
 use ragdoll::config::Config;
+use ragdoll::crypto::format_api_key_token;
 use ragdoll::db::{migrations, DbPool};
+use ragdoll::generation::MockGenerator;
 use ragdoll::models::{Embedder, MockEmbedder, MockModelProvider, ModelProvider};
 use tempfile::TempDir;
 
@@ -40,7 +42,8 @@ pub async fn setup_test_app() -> TestApp {
         .expect("bootstrap admin");
 
     let models: Arc<dyn ModelProvider> = Arc::new(MockModelProvider);
-    let state = build_state_with_provider(config.clone(), pool, models)
+    let generator: Arc<dyn ragdoll::generation::Generator> = Arc::new(MockGenerator::default());
+    let state = build_state_with_provider(config.clone(), pool, models, generator, vec![])
         .await
         .expect("build state");
     let router = build_router(state.clone());
@@ -52,7 +55,7 @@ pub async fn setup_test_app() -> TestApp {
         .expect("query admin");
     let row = rows.next().await.expect("next").expect("admin row");
     let user_id: String = row.get(0).expect("user id");
-    let token = encode_session_token(&config.jwt_secret, &user_id, "admin@ragdoll.ai", true, 3600)
+    let token = encode_session_token(&config.secret, &user_id, "admin@ragdoll.ai", true, 3600)
         .expect("session token");
 
     TestApp {
@@ -75,19 +78,22 @@ impl TestApp {
     pub async fn create_api_key_token(&self, name: &str) -> String {
         let key_id = uuid::Uuid::new_v4().to_string();
         let conn = self.state.pool.connect_one().await.expect("conn");
+        let all_perms = r#"["sources:read","sources:write","sources:delete","chunks:read","chunks:write","chunks:delete","queries:run","queries:read","queries:delete","playground:run","playground:read","db:read","settings:read","settings:write","llm_models:read","llm_models:write","llm_models:delete","llm_credentials:read","llm_credentials:write","llm_credentials:delete","analytics:read","releases:read","releases:write","releases:delete","stages:read","stages:write","stages:delete","models:read","models:download","models:delete","backups:read","backups:create","backups:upload","backups:download","backups:restore","backups:delete","users:read","users:write","users:delete","api_keys:read","api_keys:write","api_keys:delete","webhooks:read","webhooks:write","webhooks:delete"]"#;
         conn.execute(
-            "INSERT INTO api_keys (id, name) VALUES (?1, ?2)",
-            (key_id.as_str(), name),
+            "INSERT INTO api_keys (id, name, permissions) VALUES (?1, ?2, ?3)",
+            (key_id.as_str(), name, all_perms),
         )
         .await
         .expect("insert api key");
-        encode_api_key_token(
-            &self.state.config.jwt_secret,
-            &key_id,
-            name,
-            "2024-01-01T00:00:00Z",
+        format_api_key_token(
+            &encode_api_key_token(
+                &self.state.config.secret,
+                &key_id,
+                name,
+                "2024-01-01T00:00:00Z",
+            )
+            .expect("api key token"),
         )
-        .expect("api key token")
     }
 
     pub async fn create_user_token(&self, email: &str, password: &str, superadmin: bool) -> String {
@@ -95,8 +101,8 @@ impl TestApp {
         let hash = hash_password(password).expect("hash password");
         let conn = self.state.pool.connect_one().await.expect("conn");
         conn.execute(
-            "INSERT INTO users (id, email, password_hash, is_superadmin, password_is_default)
-             VALUES (?1, ?2, ?3, ?4, 0)",
+            "INSERT INTO users (id, email, password_hash, is_superadmin, password_is_default, permissions)
+             VALUES (?1, ?2, ?3, ?4, 0, '[]')",
             (
                 user_id.as_str(),
                 email,
@@ -106,14 +112,8 @@ impl TestApp {
         )
         .await
         .expect("insert user");
-        encode_session_token(
-            &self.state.config.jwt_secret,
-            &user_id,
-            email,
-            superadmin,
-            3600,
-        )
-        .expect("session token")
+        encode_session_token(&self.state.config.secret, &user_id, email, superadmin, 3600)
+            .expect("session token")
     }
 }
 
@@ -191,4 +191,44 @@ pub async fn seed_demo_chunk(state: &AppState) {
     )
     .await
     .expect("insert chunk");
+}
+
+pub async fn seed_llm_setup(app: &TestApp, release_id: &str) -> (String, String) {
+    use ragdoll::crypto::Crypto;
+
+    let crypto = Crypto::from_secret(&app.state.config.secret).unwrap();
+    let (nonce, ciphertext) = crypto.encrypt("sk-test").unwrap();
+    let cred_id = uuid::Uuid::new_v4().to_string();
+    let model_id = uuid::Uuid::new_v4().to_string();
+
+    let conn = app.state.pool.connect_one().await.expect("conn");
+    conn.execute(
+        "INSERT INTO llm_credentials (id, release_id, name, provider, nonce, ciphertext) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        (
+            cred_id.as_str(),
+            release_id,
+            "test-openai",
+            "openai",
+            nonce.as_str(),
+            ciphertext.as_str(),
+        ),
+    )
+    .await
+    .expect("insert credential");
+    conn.execute(
+        "INSERT INTO llm_models (
+            id, release_id, tag, model_name, provider, credential_id
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        (
+            model_id.as_str(),
+            release_id,
+            "mock-model",
+            "gpt-test",
+            "openai",
+            cred_id.as_str(),
+        ),
+    )
+    .await
+    .expect("insert model");
+    (cred_id, model_id)
 }

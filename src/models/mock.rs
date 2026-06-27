@@ -72,7 +72,7 @@ impl ModelProvider for MockModelProvider {
         Ok(Arc::new(MockEmbedder))
     }
 
-    async fn reranker(&self, _model_name: &str) -> Result<Arc<dyn Reranker>> {
+    async fn reranker(&self, _model_name: &str, _max_length: usize) -> Result<Arc<dyn Reranker>> {
         Ok(Arc::new(MockReranker))
     }
 }

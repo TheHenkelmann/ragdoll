@@ -14,7 +14,7 @@ class SentenceSpan:
     end: int
 
 
-def split_sentences(text: str, language: str = "de") -> list[SentenceSpan]:
+def split_sentences(text: str, language: str = "en") -> list[SentenceSpan]:
     segmenter = pysbd.Segmenter(language=language, clean=False)
     sentences = segmenter.segment(text)
     spans: list[SentenceSpan] = []

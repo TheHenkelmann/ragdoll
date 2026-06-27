@@ -21,6 +21,26 @@ pub fn verify_password(password: &str, hash: &str) -> anyhow::Result<bool> {
         .is_ok())
 }
 
+/// Strong password policy: min 12 chars, upper, lower, digit, symbol.
+pub fn validate_password(password: &str) -> Result<(), String> {
+    if password.len() < 12 {
+        return Err("password must be at least 12 characters".into());
+    }
+    if !password.chars().any(|c| c.is_ascii_uppercase()) {
+        return Err("password must include an uppercase letter".into());
+    }
+    if !password.chars().any(|c| c.is_ascii_lowercase()) {
+        return Err("password must include a lowercase letter".into());
+    }
+    if !password.chars().any(|c| c.is_ascii_digit()) {
+        return Err("password must include a number".into());
+    }
+    if !password.chars().any(|c| !c.is_ascii_alphanumeric()) {
+        return Err("password must include a symbol".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -30,5 +50,13 @@ mod tests {
         let hash = hash_password("ragdoll-test-password").unwrap();
         assert!(verify_password("ragdoll-test-password", &hash).unwrap());
         assert!(!verify_password("wrong-password", &hash).unwrap());
+    }
+
+    #[test]
+    fn validate_password_enforces_policy() {
+        assert!(validate_password("Short1!").is_err());
+        assert!(validate_password("longpassword1!").is_err());
+        assert!(validate_password("LongPassword!!").is_err());
+        assert!(validate_password("Secret123!@#Pass").is_ok());
     }
 }

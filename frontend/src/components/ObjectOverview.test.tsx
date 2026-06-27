@@ -37,6 +37,26 @@ describe("ObjectOverview components", () => {
     });
   });
 
+  it("CreateTagControl shows validation error and blocks submit", () => {
+    const onCreate = vi.fn();
+    renderWithProviders(
+      <CreateTagControl
+        label="Create"
+        maxLength={12}
+        validate={(tag) => (tag === "taken" ? "Name already taken" : null)}
+        onCreate={onCreate}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.change(screen.getByPlaceholderText("tag"), { target: { value: "taken" } });
+
+    expect(screen.getByText("Name already taken")).toBeInTheDocument();
+    expect(screen.getByLabelText("Confirm")).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Confirm"));
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
   it("ForkControl submits fork tag", async () => {
     const onFork = vi.fn().mockResolvedValue(undefined);
     renderWithProviders(<ForkControl sourceTag="v1" maxLength={50} onFork={onFork} />);

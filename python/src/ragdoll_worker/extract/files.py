@@ -69,16 +69,29 @@ def extract_file(path: Path, *, name: str = "") -> str:
     raise RuntimeError(f"unsupported file type: {suffix}")
 
 
-def extract_pdf(path: Path) -> str:
+def build_pdf_page_map(path: Path) -> tuple[str, list[dict[str, int]]]:
     reader = PdfReader(str(path))
     parts: list[str] = []
-    for page in reader.pages:
+    page_map: list[dict[str, int]] = []
+    pos = 0
+    for page_num, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
-        if text.strip():
-            parts.append(text)
+        if not text.strip():
+            continue
+        start = pos
+        end = pos + len(text)
+        page_map.append({"page": page_num, "start": start, "end": end})
+        parts.append(text)
+        pos = end + 2
     if parts:
-        return "\n\n".join(parts)
-    return ocr_pdf(path)
+        return "\n\n".join(parts), page_map
+    ocr_text = ocr_pdf(path)
+    return ocr_text, []
+
+
+def extract_pdf(path: Path) -> str:
+    text, _page_map = build_pdf_page_map(path)
+    return text
 
 
 def ocr_pdf(path: Path) -> str:

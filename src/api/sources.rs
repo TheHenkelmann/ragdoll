@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::api::batch::{BatchItemResult, BatchResponse};
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{require_superadmin, AuthContext};
+use crate::auth::{authorize, AuthContext, Permission};
 use crate::release::ReleaseCtx;
 
 #[derive(Debug, serde::Deserialize)]
@@ -33,6 +33,18 @@ pub struct SourceInput {
 pub struct SourceEnqueueResult {
     pub source_id: String,
     pub job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deduplicated: Option<bool>,
+}
+
+pub(crate) struct IngestJobPayload {
+    pub source_id: String,
+    pub source_name: String,
+    pub source_type: String,
+    pub source_uri: Option<String>,
+    pub content_hash: Option<String>,
+    pub config: String,
+    pub metadata: String,
 }
 
 pub async fn post_sources(
@@ -41,7 +53,7 @@ pub async fn post_sources(
     Extension(auth): Extension<AuthContext>,
     Json(items): Json<Vec<SourceInput>>,
 ) -> Result<BatchResponse<SourceEnqueueResult>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::SourcesWrite)?;
     let settings = state
         .settings_cache
         .get_or_load(&state.pool, &ctx.release_id)
@@ -57,7 +69,7 @@ pub async fn post_sources(
 
     let mut results = Vec::with_capacity(items.len());
     for (index, item) in items.into_iter().enumerate() {
-        results.push(create_source(&state, &ctx, index, item, &settings).await);
+        results.push(create_source(&state, &ctx, index, item, &settings, None).await);
     }
     Ok(BatchResponse { items: results })
 }
@@ -68,7 +80,7 @@ pub async fn put_sources(
     Extension(auth): Extension<AuthContext>,
     Json(items): Json<Vec<SourceInput>>,
 ) -> Result<BatchResponse<SourceEnqueueResult>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::SourcesWrite)?;
     let settings = state
         .settings_cache
         .get_or_load(&state.pool, &ctx.release_id)
@@ -88,16 +100,7 @@ pub async fn put_sources(
             ));
             continue;
         }
-        let source_id = item.id.clone().unwrap();
-        if let Err(err) = delete_source_internal(&state, &ctx, &source_id).await {
-            results.push(BatchItemResult::err(
-                index,
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                err.to_string(),
-            ));
-            continue;
-        }
-        results.push(create_source(&state, &ctx, index, item, &settings).await);
+        results.push(create_source(&state, &ctx, index, item, &settings, None).await);
     }
     Ok(BatchResponse { items: results })
 }
@@ -108,8 +111,9 @@ async fn create_source(
     index: usize,
     item: SourceInput,
     settings: &crate::settings::RuntimeSettings,
+    batch_id: Option<&str>,
 ) -> BatchItemResult<SourceEnqueueResult> {
-    match create_source_internal(state, ctx, item, settings).await {
+    match create_source_internal(state, ctx, item, settings, batch_id).await {
         Ok(result) => BatchItemResult::ok(index, result),
         Err(err) => {
             BatchItemResult::err(index, axum::http::StatusCode::BAD_REQUEST, err.to_string())
@@ -139,19 +143,51 @@ fn validate_file_extension(name: &str) -> anyhow::Result<()> {
     file_extension_from_name(name).map(|_| ())
 }
 
+pub(crate) async fn enqueue_ingest_job(
+    conn: &libsql::Connection,
+    state: &AppState,
+    ctx: &ReleaseCtx,
+    batch_id: Option<&str>,
+    payload: &IngestJobPayload,
+) -> anyhow::Result<String> {
+    let job_id = Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO ingest_jobs (
+            id, batch_id, release_id, stage_id, source_id, source_name, source_type,
+            source_uri, content_hash, config, metadata, status, max_attempts
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'pending', ?12)",
+        (
+            job_id.as_str(),
+            batch_id,
+            ctx.release_id.as_str(),
+            ctx.stage_id.as_deref(),
+            payload.source_id.as_str(),
+            payload.source_name.as_str(),
+            payload.source_type.as_str(),
+            payload.source_uri.as_deref(),
+            payload.content_hash.as_deref(),
+            payload.config.as_str(),
+            payload.metadata.as_str(),
+            state.config.max_attempts as i64,
+        ),
+    )
+    .await?;
+    Ok(job_id)
+}
+
 async fn create_source_internal(
     state: &AppState,
     ctx: &ReleaseCtx,
     item: SourceInput,
     settings: &crate::settings::RuntimeSettings,
+    batch_id: Option<&str>,
 ) -> anyhow::Result<SourceEnqueueResult> {
     if !matches!(item.source_type.as_str(), "text" | "file" | "url") {
         anyhow::bail!("invalid source type");
     }
 
-    let source_id = item.id.unwrap_or_else(|| Uuid::new_v4().to_string());
-    let name = item.name.unwrap_or_else(|| source_id.clone());
-    let job_id = Uuid::new_v4().to_string();
+    let proposed_source_id = item.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let name = item.name.unwrap_or_else(|| proposed_source_id.clone());
 
     if item.source_type == "file" {
         validate_file_extension(&name)?;
@@ -178,7 +214,10 @@ async fn create_source_internal(
                 anyhow::bail!("file exceeds max upload size");
             }
             let ext = file_extension_from_name(&name)?;
-            let staging_path = state.config.staging_dir.join(format!("{source_id}{ext}"));
+            let staging_path = state
+                .config
+                .staging_dir
+                .join(format!("{proposed_source_id}{ext}"));
             std::fs::write(&staging_path, &bytes)?;
             let hash = format!("{:x}", Sha256::digest(&bytes));
             (
@@ -198,55 +237,110 @@ async fn create_source_internal(
     let metadata = serde_json::to_string(&item.metadata)?;
 
     let conn = state.pool.connect_one().await?;
-    conn.execute(
-        "INSERT INTO sources (id, release_id, name, type, uri, content_hash, config, metadata, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending')",
-        (
-            source_id.as_str(),
-            ctx.release_id.as_str(),
-            name.as_str(),
-            item.source_type.as_str(),
-            uri.as_deref(),
-            content_hash.as_deref(),
-            config.as_str(),
-            metadata.as_str(),
-        ),
-    )
-    .await?;
 
-    conn.execute(
-        "INSERT INTO ingest_jobs (id, release_id, stage_id, source_id, status, max_attempts)
-         VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
-        (
-            job_id.as_str(),
-            ctx.release_id.as_str(),
-            ctx.stage_id.as_deref(),
-            source_id.as_str(),
-            state.config.max_attempts as i64,
-        ),
-    )
-    .await?;
+    let source_id = if let Some(ref hash) = content_hash {
+        match apply_dedup_policy(
+            &conn,
+            &ctx.release_id,
+            hash,
+            settings.dedup_policy,
+            item.id.as_deref(),
+        )
+        .await?
+        {
+            DedupOutcome::SkipExisting(existing_id) => {
+                return Ok(SourceEnqueueResult {
+                    source_id: existing_id,
+                    job_id: String::new(),
+                    deduplicated: Some(true),
+                });
+            }
+            DedupOutcome::Reject => {
+                anyhow::bail!("duplicate content rejected by dedup_policy");
+            }
+            DedupOutcome::ReplaceTarget(existing_id) => existing_id,
+            DedupOutcome::Proceed => proposed_source_id,
+        }
+    } else {
+        proposed_source_id
+    };
 
-    if let Some(content) = text_content {
+    if let Some(content) = &text_content {
         let text_path = state.config.staging_dir.join(format!("{source_id}.txt"));
         std::fs::write(text_path, content)?;
     }
 
-    Ok(SourceEnqueueResult { source_id, job_id })
-}
-
-async fn delete_source_internal(
-    state: &AppState,
-    ctx: &ReleaseCtx,
-    source_id: &str,
-) -> anyhow::Result<()> {
-    let conn = state.pool.connect_one().await?;
-    conn.execute(
-        "DELETE FROM sources WHERE id = ?1 AND release_id = ?2",
-        (source_id, ctx.release_id.as_str()),
+    let job_id = enqueue_ingest_job(
+        &conn,
+        state,
+        ctx,
+        batch_id,
+        &IngestJobPayload {
+            source_id: source_id.clone(),
+            source_name: name,
+            source_type: item.source_type,
+            source_uri: uri,
+            content_hash,
+            config,
+            metadata,
+        },
     )
     .await?;
-    Ok(())
+
+    Ok(SourceEnqueueResult {
+        source_id,
+        job_id,
+        deduplicated: None,
+    })
+}
+
+#[derive(Debug, Clone)]
+enum DedupOutcome {
+    Proceed,
+    SkipExisting(String),
+    Reject,
+    ReplaceTarget(String),
+}
+
+async fn apply_dedup_policy(
+    conn: &libsql::Connection,
+    release_id: &str,
+    content_hash: &str,
+    policy: crate::settings::DedupPolicy,
+    exclude_source_id: Option<&str>,
+) -> anyhow::Result<DedupOutcome> {
+    let mut rows = conn
+        .query(
+            "SELECT id FROM sources WHERE release_id = ?1 AND content_hash = ?2",
+            (release_id, content_hash),
+        )
+        .await?;
+
+    let mut existing: Vec<String> = Vec::new();
+    while let Some(row) = rows.next().await? {
+        let id: String = row.get(0)?;
+        if exclude_source_id.is_some_and(|ex| ex == id) {
+            continue;
+        }
+        existing.push(id);
+    }
+
+    if existing.is_empty() {
+        return Ok(DedupOutcome::Proceed);
+    }
+
+    match policy {
+        crate::settings::DedupPolicy::Skip => Ok(DedupOutcome::SkipExisting(existing[0].clone())),
+        crate::settings::DedupPolicy::Reject => Ok(DedupOutcome::Reject),
+        crate::settings::DedupPolicy::Replace => {
+            if existing.len() > 1 {
+                anyhow::bail!(
+                    "multiple sources share the same content hash; resolve duplicates before replace"
+                );
+            }
+            Ok(DedupOutcome::ReplaceTarget(existing[0].clone()))
+        }
+    }
 }
 
 fn hash_text(text: &str) -> String {

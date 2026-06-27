@@ -8,6 +8,7 @@ import {
   metaRoutes,
   mockAnalytics,
   mockRelease,
+  mockSystemMetrics,
   setupMockFetch,
 } from "./test/mockApi";
 import { renderWithProviders } from "./test/renderWithProviders";
@@ -42,6 +43,7 @@ describe("App routing", () => {
       ...authRoutes(),
       ...metaRoutes(),
       { path: "/analytics", response: mockAnalytics },
+      { path: "/system-metrics", response: mockSystemMetrics },
     ]);
     renderWithProviders(<App />, { route: "/releases/v1" });
 

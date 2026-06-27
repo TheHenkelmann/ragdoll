@@ -14,9 +14,9 @@ def reconcile_jobs(db: WorkerDb, config: WorkerConfig) -> None:
     now = datetime.now(UTC)
     rows = db.connection.execute(
         """
-        SELECT j.id, j.source_id, j.attempts, j.max_attempts, j.heartbeat_at, s.type, s.uri
+        SELECT j.id, j.source_id, j.attempts, j.max_attempts, j.heartbeat_at,
+               j.source_type, j.source_uri
         FROM ingest_jobs j
-        JOIN sources s ON s.id = j.source_id
         WHERE j.status = 'processing'
         """
     ).fetchall()
@@ -47,7 +47,4 @@ def reconcile_jobs(db: WorkerDb, config: WorkerConfig) -> None:
             """,
             (status, reason, job_id),
         )
-        db.connection.execute(
-            "UPDATE sources SET status = ?, error = ?, updated_at = datetime('now') WHERE id = ?",
-            (status if status == "failed" else "processing", reason, source_id),
-        )
+        db._commit()

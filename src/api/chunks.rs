@@ -12,7 +12,7 @@ use crate::api::batch::{BatchItemResult, BatchResponse};
 use crate::api::error::ApiError;
 use crate::api::queries::ListQueryParams;
 use crate::api::router::AppState;
-use crate::auth::{require_superadmin, AuthContext};
+use crate::auth::{authorize, AuthContext, Permission};
 use crate::filter::decode_filter_param;
 use crate::release::{NestedPathId, ReleaseCtx};
 
@@ -53,8 +53,10 @@ pub struct ChunkPatch {
 pub async fn get_chunks(
     State(state): State<Arc<AppState>>,
     ctx: ReleaseCtx,
+    Extension(auth): Extension<AuthContext>,
     Query(params): Query<ListQueryParams>,
 ) -> Result<Json<Vec<ChunkRecord>>, ApiError> {
+    authorize(&auth, Permission::ChunksRead)?;
     let limit = params.limit.unwrap_or(50).min(500);
     let offset = params.offset.unwrap_or(0);
     let mut where_clause = format!("c.release_id = '{}'", ctx.release_id);
@@ -124,7 +126,7 @@ pub async fn post_chunks(
     Extension(auth): Extension<AuthContext>,
     Json(items): Json<Vec<ChunkInput>>,
 ) -> Result<BatchResponse<ChunkEnqueueResult>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ChunksWrite)?;
     let settings = state
         .settings_cache
         .get_or_load(&state.pool, &ctx.release_id)
@@ -169,35 +171,17 @@ pub async fn post_chunks(
 
         if let Err(err) = conn
             .execute(
-                "INSERT INTO sources (id, release_id, name, type, config, metadata, status)
-                 VALUES (?1, ?2, ?3, 'text', '{}', ?4, 'pending')
-                 ON CONFLICT(id) DO NOTHING",
-                (
-                    item.source_id.as_str(),
-                    ctx.release_id.as_str(),
-                    item.source_id.as_str(),
-                    metadata.as_str(),
-                ),
-            )
-            .await
-        {
-            results.push(BatchItemResult::err(
-                index,
-                axum::http::StatusCode::BAD_REQUEST,
-                err.to_string(),
-            ));
-            continue;
-        }
-
-        if let Err(err) = conn
-            .execute(
-                "INSERT INTO ingest_jobs (id, release_id, stage_id, source_id, status, max_attempts)
-                 VALUES (?1, ?2, ?3, ?4, 'pending', ?5)",
+                "INSERT INTO ingest_jobs (
+                    id, release_id, stage_id, source_id, source_name, source_type,
+                    source_uri, config, metadata, status, max_attempts
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 'text', NULL, '{}', ?6, 'pending', ?7)",
                 (
                     job_id.as_str(),
                     ctx.release_id.as_str(),
                     ctx.stage_id.as_deref(),
                     item.source_id.as_str(),
+                    item.source_id.as_str(),
+                    metadata.as_str(),
                     state.config.max_attempts as i64,
                 ),
             )
@@ -227,7 +211,7 @@ pub async fn patch_chunk(
     Path(NestedPathId { id, .. }): Path<NestedPathId>,
     Json(patch): Json<ChunkPatch>,
 ) -> Result<Json<ChunkRecord>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ChunksWrite)?;
     let conn = state
         .pool
         .connect_one()
@@ -293,16 +277,16 @@ pub async fn delete_chunks(
     Extension(auth): Extension<AuthContext>,
     Query(params): Query<ListQueryParams>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ChunksDelete)?;
     let filter_raw = params
         .filter
         .ok_or_else(|| ApiError::bad_request("filter query param required"))?;
     let filter =
         decode_filter_param(&filter_raw).map_err(|e| ApiError::bad_request(e.to_string()))?;
-    let compiled = crate::filter::compile_filter(&filter, "c")
+    let compiled = crate::filter::compile_filter(&filter, "chunks")
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
     let sql = format!(
-        "DELETE FROM chunks c WHERE c.release_id = '{}' AND {}",
+        "DELETE FROM chunks WHERE chunks.release_id = '{}' AND {}",
         ctx.release_id, compiled.sql
     );
     let conn = state

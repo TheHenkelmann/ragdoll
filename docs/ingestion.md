@@ -98,8 +98,59 @@ plus `chunk_count` and `char_count`.
 These feed the dashboard and the analytics endpoint
 ([operations.md](operations.md)).
 
+## Deduplication
+
+Per-release `dedup_policy` controls duplicate content (same SHA-256 hash within
+a release):
+
+| Value | Behavior |
+|---|---|
+| `skip` | Default — return existing source, skip re-ingest |
+| `reject` | Fail the ingest request |
+| `replace` | Delete old source/chunks and re-ingest |
+
+Configure via **Settings** or `PATCH .../settings` with `"dedup_policy": "skip"`.
+
+## Replace and metadata updates
+
+- **`PUT /sources`** — replace sources by id (delete + re-ingest same id).
+- **`PATCH /sources/{id}`** — update `metadata` without re-chunking; useful for
+  filter fields you forgot at ingest time (does not add new chunk text).
+
+## Ingest job status
+
+Poll a release-wide summary instead of individual sources:
+
+```bash
+curl -sS "http://localhost:8080/api/v1/releases/first-release/ingest_jobs?details=true&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Returns counts by status (`pending`, `processing`, `completed`, `failed`) and,
+with `details=true`, recent jobs. Requires `sources:read`.
+
+## Webhooks
+
+Instead of polling, configure ingest-status webhooks per release. The worker POSTs
+signed JSON on `completed` / `failed`. See
+[operations.md → Webhooks](operations.md#webhooks).
+
+## Reindex
+
+Re-embed existing stored text after an embedding model change (no re-extraction):
+
+```bash
+curl -sS -X POST http://localhost:8080/api/v1/releases/first-release/reindex \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+Requires `sources:write`. See [operations.md → Reindex](operations.md#reindex).
+
 ## Related
 
+- [models.md](models.md) — embedding model changes and reindex
 - [chunking.md](chunking.md) — what happens to the extracted text
 - [querying.md](querying.md) — retrieving and filtering what you ingested
 - [pitfalls.md](pitfalls.md) — async timing, re-ingest triggers, metadata planning

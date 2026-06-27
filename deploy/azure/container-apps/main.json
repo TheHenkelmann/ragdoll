@@ -26,17 +26,17 @@
       "type": "string",
       "defaultValue": "ghcr.io/thehenkelmann/ragdoll:latest"
     },
-    "jwtSecretOverride": {
+    "secretOverride": {
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Optional override for RAGDOLL_JWT_SECRET. Leave empty to auto-generate an ephemeral random secret (not stored for you)."
+        "description": "Optional override for RAGDOLL_SECRET. Leave empty to auto-generate an ephemeral random secret (not stored for you)."
       }
     }
   },
   "variables": {
-    "generatedJwtSecret": "[concat(replace(guid(), '-', ''), replace(guid(), '-', ''), replace(guid(), '-', ''))]",
-    "jwtSecret": "[if(empty(parameters('jwtSecretOverride')), variables('generatedJwtSecret'), parameters('jwtSecretOverride'))]"
+    "generatedSecret": "[concat(replace(guid(), '-', ''), replace(guid(), '-', ''), replace(guid(), '-', ''))]",
+    "ragdollSecret": "[if(empty(parameters('secretOverride')), variables('generatedSecret'), parameters('secretOverride'))]"
   },
   "resources": [
     {
@@ -102,7 +102,7 @@
             "transport": "auto"
           },
           "secrets": [
-            { "name": "jwt-secret", "value": "[variables('jwtSecret')]" }
+            { "name": "ragdoll-secret", "value": "[variables('ragdollSecret')]" }
           ]
         },
         "template": {
@@ -113,7 +113,7 @@
               "resources": { "cpu": 2.0, "memory": "4Gi" },
               "env": [
                 { "name": "RAGDOLL_DATA_DIR", "value": "/data" },
-                { "name": "RAGDOLL_JWT_SECRET", "secretRef": "jwt-secret" }
+                { "name": "RAGDOLL_SECRET", "secretRef": "ragdoll-secret" }
               ],
               "volumeMounts": [
                 { "volumeName": "data", "mountPath": "/data" }

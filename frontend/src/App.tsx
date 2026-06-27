@@ -3,6 +3,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SnackbarProvider } from "./context/SnackbarContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DatabasePage } from "./pages/DatabasePage";
@@ -12,7 +13,14 @@ import { PlaygroundPage } from "./pages/PlaygroundPage";
 import { ReleasesOverviewPage } from "./pages/ReleasesOverviewPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SourcesPage } from "./pages/SourcesPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
+import { LlmModelsPage } from "./pages/LlmModelsPage";
+import { BackupsPage } from "./pages/BackupsPage";
+import { ModelsPage } from "./pages/ModelsPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { StagesOverviewPage } from "./pages/StagesOverviewPage";
+import { UsersPage } from "./pages/UsersPage";
+import { WebhooksPage } from "./pages/WebhooksPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -27,8 +35,9 @@ function Protected({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <Routes>
+      <SnackbarProvider>
+        <AuthProvider>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
@@ -41,12 +50,19 @@ export function App() {
             <Route index element={<Navigate to="/releases" replace />} />
             <Route path="releases" element={<ReleasesOverviewPage />} />
             <Route path="stages" element={<StagesOverviewPage />} />
+            <Route path="api-keys" element={<ApiKeysPage />} />
+            <Route path="backups" element={<BackupsPage />} />
+            <Route path="models" element={<ModelsPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="releases/:releaseTag" element={<DashboardPage />} />
             <Route path="releases/:releaseTag/dashboard" element={<Navigate to=".." replace relative="path" />} />
             <Route path="releases/:releaseTag/playground" element={<PlaygroundPage />} />
             <Route path="releases/:releaseTag/sources" element={<SourcesPage />} />
             <Route path="releases/:releaseTag/database" element={<DatabasePage />} />
             <Route path="releases/:releaseTag/settings" element={<SettingsPage />} />
+            <Route path="releases/:releaseTag/webhooks" element={<WebhooksPage />} />
+            <Route path="releases/:releaseTag/models" element={<LlmModelsPage />} />
             <Route path="stages/:stageTag" element={<DashboardPage />} />
             <Route
               path="stages/:stageTag/dashboard"
@@ -61,8 +77,9 @@ export function App() {
               </Protected>
             }
           />
-        </Routes>
-      </AuthProvider>
+          </Routes>
+        </AuthProvider>
+      </SnackbarProvider>
     </ThemeProvider>
   );
 }

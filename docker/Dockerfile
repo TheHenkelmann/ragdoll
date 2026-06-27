@@ -68,7 +68,7 @@ ENV RAGDOLL_DATA_DIR=/data
 ENV RAGDOLL_MIGRATIONS_DIR=/app/migrations
 ENV RAGDOLL_STATIC_DIR=/app/frontend/dist
 ENV RAGDOLL_PORT=8080
-ENV RAGDOLL_JWT_SECRET=change-me-in-production
+ENV RAGDOLL_SECRET=change-me-in-production
 
 LABEL org.opencontainers.image.licenses=AGPL-3.0-only
 LABEL org.opencontainers.image.title=Ragdoll

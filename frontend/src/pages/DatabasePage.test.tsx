@@ -21,9 +21,17 @@ describe("DatabasePage", () => {
         path: "/releases/v1/db/",
         response: (url: string) => {
           if (url.includes("/chunks")) {
-            return [{ id: "chk-1", source_id: "src-1", content: "data" }];
+            return {
+              columns: ["content", "source_id", "id"],
+              rows: [{ id: "chk-1", source_id: "src-1", content: "data" }],
+              facets: {},
+            };
           }
-          return [{ id: "src-1", name: "Doc A", type: "file" }];
+          return {
+            columns: ["name", "type", "id"],
+            rows: [{ id: "src-1", name: "Doc A", type: "file" }],
+            facets: { type: { truncated: false, values: ["file"] } },
+          };
         },
       },
     ]);
@@ -40,6 +48,8 @@ describe("DatabasePage", () => {
 
     expect(screen.getByText("Database")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "sources" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "webhooks" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "webhook_deliveries" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("Doc A")).toBeInTheDocument();

@@ -2,12 +2,23 @@
 
 :root {
   color-scheme: dark;
-  --bg: #0f1117;
-  --surface: #171b26;
-  --border: #2a3142;
-  --text: #C6C6C6;
-  --muted: #9aa3b5;
-  --accent: #6ea8fe;
+  --bg: #121212;
+  --surface: #242424;
+  --selected: #313131;
+  --border: #313131;
+  --text: #c6c6c6;
+  --muted: #aaaaaa;
+  --subtle: #898989;
+  --accent: #c6c6c6;
+  --positive: #016239;
+  --positive-text: #c6c6c6;
+  --danger: #541c15;
+  --danger-text: #c6c6c6;
+  --warning: #b45309;
+  --snackbar-info: #aaaaaa;
+  --rail-width: 3.5rem;
+  --rail-expanded-width: 13.75rem;
+  --secondary-sidebar-width: 11rem;
 }
 
 html {
@@ -18,10 +29,18 @@ html.light {
   color-scheme: light;
   --bg: #ffffff;
   --surface: #f8fafc;
+  --selected: #e2e8f0;
   --border: #e2e8f0;
   --text: #1e293b;
   --muted: #64748b;
+  --subtle: #94a3b8;
   --accent: #2563eb;
+  --positive: #111827;
+  --positive-text: #ffffff;
+  --danger: #dc2626;
+  --danger-text: #ffffff;
+  --warning: #d97706;
+  --snackbar-info: #2563eb;
 }
 
 body {
@@ -38,17 +57,24 @@ body {
 }
 
 .btn-primary {
-  @apply rounded-lg px-4 py-2 font-medium transition-all text-white;
-  background: #111827;
+  @apply rounded-lg px-4 py-2 font-medium transition-all;
+  background: var(--positive);
+  color: var(--positive-text);
 }
 
-html.light .btn-primary {
-  background: #111827;
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
   @apply rounded-lg px-4 py-2 font-medium transition-all;
-  background: color-mix(in srgb, var(--surface) 80%, var(--border));
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--selected);
 }
 
 .input {
@@ -58,15 +84,135 @@ html.light .btn-primary {
   color: var(--text);
 }
 
+.input:focus {
+  --tw-ring-color: color-mix(in srgb, var(--text) 25%, transparent);
+}
+
 .nav-item {
-  @apply block rounded-lg px-3 py-2 text-sm transition-all;
+  @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all;
   color: var(--muted);
 }
 
-.nav-item.active,
 .nav-item:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface) 70%, var(--accent) 8%);
+  background: var(--selected);
+}
+
+.nav-item.active {
+  color: var(--text);
+  background: var(--selected);
+}
+
+.rail-item {
+  @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all;
+  color: var(--muted);
+}
+
+.rail-item:hover {
+  color: var(--text);
+  background: var(--selected);
+}
+
+.rail-item.active {
+  color: var(--text);
+  background: var(--selected);
+}
+
+.rail-item.disabled,
+.secondary-nav-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.rail-icon-wrap {
+  @apply relative flex shrink-0 items-center justify-center;
+  width: 20px;
+}
+
+.rail-badge {
+  @apply absolute flex items-center justify-center rounded-full text-[9px] font-semibold leading-none text-white;
+  top: -5px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: var(--error);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.rail-badge-dot {
+  @apply absolute rounded-full;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  background: var(--error);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.rail-shell {
+  @apply relative shrink-0;
+  width: var(--rail-width);
+}
+
+.rail-panel {
+  @apply absolute inset-y-0 left-0 z-40 flex flex-col border-r;
+  width: var(--rail-width);
+  background: var(--bg);
+  border-color: var(--border);
+  transition: width 0s;
+}
+
+.rail-shell:hover .rail-panel {
+  width: var(--rail-expanded-width);
+  transition: width 0.15s ease;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+}
+
+.rail-label {
+  @apply overflow-hidden whitespace-nowrap opacity-0;
+  transition: opacity 0s;
+}
+
+.rail-shell:hover .rail-label {
+  opacity: 1;
+  transition: opacity 0.15s ease;
+}
+
+.rail-shell.rail-collapsed .rail-panel,
+.rail-shell.rail-collapsed:hover .rail-panel {
+  width: var(--rail-width);
+  transition: width 0.15s ease;
+  box-shadow: none;
+}
+
+.rail-shell.rail-collapsed .rail-label,
+.rail-shell.rail-collapsed:hover .rail-label {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.secondary-sidebar {
+  @apply shrink-0 border-r px-3 py-4;
+  width: var(--secondary-sidebar-width);
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.secondary-nav-item {
+  @apply block rounded-lg px-2 py-1.5 text-sm transition-all;
+  color: var(--muted);
+}
+
+.secondary-nav-item:hover {
+  color: var(--text);
+  background: var(--selected);
+}
+
+.secondary-nav-item.active {
+  color: var(--text);
+  background: var(--selected);
 }
 
 .breadcrumb-link {
@@ -76,28 +222,30 @@ html.light .btn-primary {
 
 .banner-warning {
   @apply border-b px-4 py-2 text-sm text-center;
-  background: #7f1d1d;
-  color: #fecaca;
-  border-color: #991b1b;
+  background: var(--danger);
+  color: var(--danger-text);
+  border-color: var(--danger);
 }
 
 .btn-danger {
-  @apply rounded-lg px-4 py-2 font-medium transition-all text-white disabled:cursor-not-allowed disabled:opacity-50;
-  background: #dc2626;
+  @apply rounded-lg px-4 py-2 font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50;
+  background: var(--danger);
+  color: var(--danger-text);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #b91c1c;
+  filter: brightness(1.15);
 }
 
 .btn-view {
   @apply inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all;
-  background: color-mix(in srgb, var(--surface) 80%, var(--border));
+  background: var(--surface);
   color: var(--text);
+  border: 1px solid var(--border);
 }
 
 .btn-view:hover {
-  background: color-mix(in srgb, var(--surface) 70%, var(--accent) 12%);
+  background: var(--selected);
 }
 
 .create-input-wrap {
@@ -116,7 +264,7 @@ html.light .btn-primary {
 }
 
 .icon-btn-submit:hover:not(:disabled) {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .icon-btn-submit:disabled {
@@ -132,21 +280,112 @@ html.light .btn-primary {
 
 .icon-btn:hover {
   color: var(--text);
-  background: color-mix(in srgb, var(--surface) 70%, var(--border));
+  background: var(--selected);
 }
 
 .btn-run {
   @apply w-full rounded-xl px-6 py-3 text-base font-semibold transition-all md:w-auto;
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--positive);
+  color: var(--positive-text);
 }
 
 .btn-run:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
+  filter: brightness(1.1);
+}
+
+.text-subtle {
+  color: var(--subtle);
+}
+
+.text-error {
+  color: #f87171;
+}
+
+html.light .text-error {
+  color: #dc2626;
+}
+
+.token-once {
+  @apply rounded-lg border p-4 font-mono text-sm break-all;
+  background: var(--selected);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.modal-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.btn-toggle-active {
+  background: var(--selected) !important;
+  color: var(--text);
 }
 
 .recharts-tooltip-wrapper {
   outline: none;
+}
+
+.snackbar-container {
+  @apply fixed top-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2;
+  pointer-events: auto;
+}
+
+.snackbar-item {
+  @apply overflow-hidden rounded-xl border shadow-sm;
+  background: var(--surface);
+  border-color: var(--border);
+  border-left-width: 3px;
+}
+
+.snackbar-item-expandable {
+  @apply cursor-pointer;
+}
+
+.snackbar-header {
+  @apply flex items-center gap-2 px-3 py-2.5;
+}
+
+.snackbar-title {
+  @apply min-w-0 flex-1 text-sm font-medium;
+  color: var(--text);
+}
+
+.snackbar-count {
+  @apply font-normal;
+  color: var(--muted);
+}
+
+.snackbar-dismiss {
+  @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-lg leading-none transition-colors;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+}
+
+.snackbar-dismiss:hover {
+  color: var(--text);
+  background: var(--selected);
+}
+
+.snackbar-body {
+  @apply border-t px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap;
+  border-color: var(--border);
+  color: var(--muted);
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.snackbar-countdown-track {
+  stroke: var(--border);
+}
+
+.snackbar-expand-hint {
+  @apply flex items-center justify-center pb-1;
+  color: var(--subtle);
+  margin-top: -0.25rem;
+}
+
+.snackbar-item-expandable:hover .snackbar-expand-hint {
+  color: var(--muted);
 }

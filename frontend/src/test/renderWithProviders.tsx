@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter, type MemoryRouterProps } from "react-router-dom";
 import { setToken } from "../api/client";
 import { AuthProvider } from "../context/AuthContext";
+import { SnackbarProvider } from "../context/SnackbarContext";
 import { ThemeProvider } from "../context/ThemeContext";
 import { setupMockFetch, type MockRoute } from "./mockApi";
 
@@ -29,11 +30,13 @@ export function renderWithProviders(ui: ReactElement, options: RenderWithProvide
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ThemeProvider>
-        <AuthProvider>
-          <MemoryRouter initialEntries={[route]} {...routerProps}>
-            {children}
-          </MemoryRouter>
-        </AuthProvider>
+        <SnackbarProvider>
+          <AuthProvider>
+            <MemoryRouter initialEntries={[route]} {...routerProps}>
+              {children}
+            </MemoryRouter>
+          </AuthProvider>
+        </SnackbarProvider>
       </ThemeProvider>
     );
   }

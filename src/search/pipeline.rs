@@ -9,11 +9,15 @@ use uuid::Uuid;
 
 use crate::db::DbPool;
 use crate::filter::{compile_filter, FilterExpr};
+use crate::generation::types::{GeneratedAnswer, GenerationRequest, QueryUsage};
 use crate::models::ModelProvider;
 use crate::release::ReleaseCtx;
+use crate::search::citation::build_citation;
+use crate::search::hybrid::reciprocal_rank_fusion;
 use crate::search::score::{cosine_similarity_from_distance, normalize_rerank_scores};
 use crate::settings::{
-    effective_store_payload, RuntimeSettings, DEFAULT_RERANK_CANDIDATES, DEFAULT_TOP_K,
+    effective_rerank_max_length, effective_store_payload, RuntimeSettings,
+    DEFAULT_MIN_RERANK_SCORE, DEFAULT_MIN_SEMANTIC_SCORE, DEFAULT_RERANK_CANDIDATES, DEFAULT_TOP_K,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +32,30 @@ pub struct QueryRequest {
     pub min_semantic_score: Option<f64>,
     #[serde(default)]
     pub min_rerank_score: Option<f64>,
+    #[serde(default)]
+    pub include_snippet: Option<bool>,
+    #[serde(default)]
+    pub hybrid: Option<bool>,
+    #[serde(default)]
+    pub bm25_weight: Option<f32>,
+    #[serde(default)]
+    pub generation: Option<GenerationRequest>,
+}
+
+#[derive(Debug, Clone)]
+struct RawMatch {
+    chunk_id: String,
+    source_id: String,
+    source_name: String,
+    source_type: String,
+    uri: Option<String>,
+    page_map: String,
+    embedding_version: String,
+    content: String,
+    metadata: serde_json::Value,
+    provenance: serde_json::Value,
+    semantic_score: f64,
+    rerank_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +66,7 @@ pub struct QueryMatch {
     pub content: String,
     pub metadata: serde_json::Value,
     pub provenance: serde_json::Value,
+    pub citation: crate::search::Citation,
     pub semantic_score: f64,
     pub rerank_score: Option<f64>,
 }
@@ -46,7 +75,11 @@ pub struct QueryMatch {
 pub struct QueryResult {
     pub query_id: String,
     pub matches: Vec<QueryMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<GeneratedAnswer>,
     pub latency: QueryLatency,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<QueryUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,12 +89,16 @@ pub struct QueryLatency {
     pub search_ms: i64,
     pub rerank_ms: Option<i64>,
     pub store_ms: i64,
-    pub total_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_ms: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_total_ms: Option<i64>,
+    pub total_ragdoll_ms: i64,
     pub candidate_count: usize,
     pub result_count: usize,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct QueryOptions {
     pub ts_start: Option<i64>,
     pub store_payload: bool,
@@ -88,8 +125,10 @@ impl SearchPipeline {
             .rerank_candidates
             .unwrap_or(DEFAULT_RERANK_CANDIDATES)
             .max(top_k);
-        let min_semantic = request.min_semantic_score.unwrap_or(0.0);
-        let min_rerank = request.min_rerank_score.unwrap_or(0.0);
+        let min_semantic = request
+            .min_semantic_score
+            .unwrap_or(DEFAULT_MIN_SEMANTIC_SCORE);
+        let min_rerank = request.min_rerank_score.unwrap_or(DEFAULT_MIN_RERANK_SCORE);
         let store_payload =
             effective_store_payload(settings, options.store_payload, options.playground);
 
@@ -119,54 +158,56 @@ impl SearchPipeline {
         }
         let where_clause = where_parts.join(" AND ");
 
+        let fetch_limit = if rerank_enabled {
+            rerank_candidates
+        } else {
+            top_k
+        };
+
         params.push(vector_json.clone());
         let vector_param_index = params.len();
-        params.push(rerank_candidates.to_string());
+        params.push(fetch_limit.to_string());
 
-        let sql = format!(
-            "SELECT c.id, c.source_id, s.name, c.content, c.metadata, c.provenance,
-                    vector_distance_cos(c.embedding, vector32(?{vector_param_index})) AS distance
-             FROM chunks c
-             JOIN sources s ON s.id = c.source_id
-             WHERE {where_clause}
-             ORDER BY distance ASC
-             LIMIT ?{}",
-            params.len()
-        );
+        let hybrid_enabled = request.hybrid.unwrap_or(false);
+        let bm25_weight = request.bm25_weight.unwrap_or(1.0);
 
         let search_start = Instant::now();
         let conn = self.pool.connect_one().await?;
-        let mut rows = conn.query(&sql, params).await?;
-        let mut all_semantic = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let distance: f64 = row.get(6)?;
-            let semantic_score = cosine_similarity_from_distance(distance);
-            all_semantic.push(QueryMatch {
-                chunk_id: row.get(0)?,
-                source_id: row.get(1)?,
-                source_name: row.get(2)?,
-                content: row.get(3)?,
-                metadata: serde_json::from_str(&row.get::<String>(4)?)
-                    .unwrap_or(serde_json::json!({})),
-                provenance: serde_json::from_str(&row.get::<String>(5)?)
-                    .unwrap_or(serde_json::json!([])),
-                semantic_score,
-                rerank_score: None,
+        let mut all_semantic = self
+            .vector_search(&conn, &where_clause, params, vector_param_index)
+            .await?;
+
+        if hybrid_enabled {
+            let bm25_ids = self.bm25_search(&conn, ctx, request, fetch_limit).await?;
+            let vector_ids: Vec<String> = all_semantic.iter().map(|m| m.chunk_id.clone()).collect();
+            let fused = reciprocal_rank_fusion(&vector_ids, &bm25_ids, bm25_weight);
+            let rank_map: std::collections::HashMap<&str, usize> = fused
+                .iter()
+                .enumerate()
+                .map(|(i, (id, _))| (id.as_str(), i))
+                .collect();
+            all_semantic.sort_by_key(|m| {
+                rank_map
+                    .get(m.chunk_id.as_str())
+                    .copied()
+                    .unwrap_or(usize::MAX)
             });
         }
+
         let search_ms = search_start.elapsed().as_millis() as i64;
         let candidate_count = all_semantic.len();
 
-        let mut rerank_pool: Vec<QueryMatch> = all_semantic
+        let mut rerank_pool: Vec<RawMatch> = all_semantic
             .iter()
             .filter(|c| c.semantic_score >= min_semantic)
             .cloned()
             .collect();
 
         let rerank_ms = if rerank_enabled && !rerank_pool.is_empty() {
+            let max_len = effective_rerank_max_length(settings);
             let reranker = self
                 .models
-                .reranker(&settings.rerank_model)
+                .reranker(&settings.rerank_model, max_len)
                 .await
                 .context("load reranker")?;
             let rerank_start = Instant::now();
@@ -194,17 +235,17 @@ impl SearchPipeline {
         let all_reranked = rerank_pool;
 
         let playground_semantic = if options.playground {
-            Some(all_semantic.clone())
+            Some(attach_citations(&conn, &all_semantic, false).await?)
         } else {
             None
         };
         let playground_reranked = if options.playground && rerank_enabled {
-            Some(all_reranked.clone())
+            Some(attach_citations(&conn, &all_reranked, false).await?)
         } else {
             None
         };
 
-        let response_matches: Vec<QueryMatch> = if options.playground {
+        let response_raw: Vec<RawMatch> = if options.playground {
             let rerank_by_id: std::collections::HashMap<&str, Option<f64>> = all_reranked
                 .iter()
                 .map(|c| (c.chunk_id.as_str(), c.rerank_score))
@@ -218,7 +259,7 @@ impl SearchPipeline {
                 })
                 .collect()
         } else {
-            let mut filtered: Vec<QueryMatch> = if rerank_enabled {
+            let mut filtered: Vec<RawMatch> = if rerank_enabled {
                 all_reranked
                     .into_iter()
                     .filter(|c| c.rerank_score.unwrap_or(0.0) >= min_rerank)
@@ -232,6 +273,8 @@ impl SearchPipeline {
             filtered.truncate(top_k as usize);
             filtered
         };
+        let include_snippet = request.include_snippet.unwrap_or(false);
+        let response_matches = attach_citations(&conn, &response_raw, include_snippet).await?;
         let result_count = response_matches.len();
 
         let query_id = Uuid::new_v4().to_string();
@@ -241,6 +284,8 @@ impl SearchPipeline {
             "rerank_candidates": rerank_candidates,
             "min_semantic_score": min_semantic,
             "min_rerank_score": min_rerank,
+            "hybrid": hybrid_enabled,
+            "bm25_weight": bm25_weight,
         });
         let filter_json = request
             .filter
@@ -259,7 +304,7 @@ impl SearchPipeline {
         conn.execute(
             "INSERT INTO queries (
                 id, release_id, stage_id, text, filters, params, playground,
-                upstream_ms, embed_ms, search_ms, rerank_ms, store_ms, total_ms,
+                upstream_ms, embed_ms, search_ms, rerank_ms, store_ms, total_ragdoll_ms,
                 candidate_count, result_count, response_status
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             (
@@ -358,24 +403,28 @@ impl SearchPipeline {
         }
 
         let store_ms = store_start.elapsed().as_millis() as i64;
-        let total_ms = started.elapsed().as_millis() as i64;
+        let total_ragdoll_ms = started.elapsed().as_millis() as i64;
 
         conn.execute(
-            "UPDATE queries SET store_ms = ?1, total_ms = ?2 WHERE id = ?3",
-            (store_ms, total_ms, query_id.as_str()),
+            "UPDATE queries SET store_ms = ?1, total_ragdoll_ms = ?2 WHERE id = ?3",
+            (store_ms, total_ragdoll_ms, query_id.as_str()),
         )
         .await?;
 
         Ok(QueryResult {
             query_id,
             matches: response_matches,
+            answer: None,
+            usage: None,
             latency: QueryLatency {
                 upstream_ms,
                 embed_ms,
                 search_ms,
                 rerank_ms,
                 store_ms,
-                total_ms,
+                generation_ms: None,
+                generation_total_ms: None,
+                total_ragdoll_ms,
                 candidate_count,
                 result_count,
             },
@@ -406,8 +455,10 @@ impl SearchPipeline {
             .map(serde_json::to_string)
             .transpose()?
             .unwrap_or_else(|| "{}".to_string());
-        let min_semantic = request.min_semantic_score.unwrap_or(0.0);
-        let min_rerank = request.min_rerank_score.unwrap_or(0.0);
+        let min_semantic = request
+            .min_semantic_score
+            .unwrap_or(DEFAULT_MIN_SEMANTIC_SCORE);
+        let min_rerank = request.min_rerank_score.unwrap_or(DEFAULT_MIN_RERANK_SCORE);
         let params_json = serde_json::json!({
             "top_k": top_k,
             "rerank": rerank_enabled,
@@ -441,4 +492,149 @@ impl SearchPipeline {
 
         Ok(query_id)
     }
+
+    async fn vector_search(
+        &self,
+        conn: &libsql::Connection,
+        where_clause: &str,
+        params: Vec<String>,
+        vector_param_index: usize,
+    ) -> Result<Vec<RawMatch>> {
+        let sql = format!(
+            "SELECT c.id, c.source_id, s.name, s.type, s.uri, s.page_map, c.content, c.metadata,
+                    c.provenance, c.embedding_version,
+                    vector_distance_cos(c.embedding, vector32(?{vector_param_index})) AS distance
+             FROM chunks c
+             JOIN sources s ON s.id = c.source_id
+             WHERE {where_clause}
+             ORDER BY distance ASC
+             LIMIT ?{}",
+            params.len()
+        );
+        let mut rows = conn.query(&sql, params).await?;
+        let mut matches = Vec::new();
+        while let Some(row) = rows.next().await? {
+            let distance: f64 = row.get(10)?;
+            let semantic_score = cosine_similarity_from_distance(distance);
+            matches.push(RawMatch {
+                chunk_id: row.get(0)?,
+                source_id: row.get(1)?,
+                source_name: row.get(2)?,
+                source_type: row.get(3)?,
+                uri: row.get(4).ok(),
+                page_map: row.get::<String>(5).unwrap_or_else(|_| "[]".to_string()),
+                content: row.get(6)?,
+                metadata: serde_json::from_str(&row.get::<String>(7)?)
+                    .unwrap_or(serde_json::json!({})),
+                provenance: serde_json::from_str(&row.get::<String>(8)?)
+                    .unwrap_or(serde_json::json!([])),
+                embedding_version: row.get(9)?,
+                semantic_score,
+                rerank_score: None,
+            });
+        }
+        Ok(matches)
+    }
+
+    async fn bm25_search(
+        &self,
+        conn: &libsql::Connection,
+        ctx: &ReleaseCtx,
+        request: &QueryRequest,
+        limit: u32,
+    ) -> Result<Vec<String>> {
+        let fts_query = build_fts_query(&request.text);
+        if fts_query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut where_parts = vec![format!("c.release_id = '{}'", ctx.release_id)];
+        if let Some(filter) = &request.filter {
+            let compiled = compile_filter(filter, "c")?;
+            where_parts.push(compiled.sql);
+        }
+        let filter_clause = where_parts.join(" AND ");
+        let sql = format!(
+            "SELECT f.chunk_id
+             FROM chunks_fts f
+             JOIN chunks c ON c.id = f.chunk_id
+             JOIN sources s ON s.id = c.source_id
+             WHERE chunks_fts MATCH ?1 AND {filter_clause}
+             ORDER BY bm25(chunks_fts)
+             LIMIT ?2"
+        );
+        let mut rows = conn
+            .query(&sql, (fts_query.as_str(), limit.to_string()))
+            .await?;
+        let mut ids = Vec::new();
+        while let Some(row) = rows.next().await? {
+            ids.push(row.get(0)?);
+        }
+        Ok(ids)
+    }
+}
+
+fn build_fts_query(text: &str) -> String {
+    text.split_whitespace()
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+async fn attach_citations(
+    conn: &libsql::Connection,
+    raw_matches: &[RawMatch],
+    include_snippet: bool,
+) -> Result<Vec<QueryMatch>> {
+    let mut source_texts: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    if include_snippet {
+        for raw in raw_matches {
+            if source_texts.contains_key(&raw.source_id) {
+                continue;
+            }
+            let mut rows = conn
+                .query(
+                    "SELECT text FROM source_texts WHERE source_id = ?1",
+                    [raw.source_id.as_str()],
+                )
+                .await?;
+            if let Some(row) = rows.next().await? {
+                let text: String = row.get(0)?;
+                source_texts.insert(raw.source_id.clone(), text);
+            }
+        }
+    }
+
+    Ok(raw_matches
+        .iter()
+        .map(|raw| {
+            let source_text = source_texts.get(&raw.source_id).map(String::as_str);
+            let citation = build_citation(
+                &raw.chunk_id,
+                &raw.embedding_version,
+                &raw.source_id,
+                &raw.source_name,
+                &raw.source_type,
+                raw.uri.as_deref(),
+                &raw.metadata,
+                &raw.provenance,
+                &raw.page_map,
+                source_text,
+                include_snippet,
+                120,
+            );
+            QueryMatch {
+                chunk_id: raw.chunk_id.clone(),
+                source_id: raw.source_id.clone(),
+                source_name: raw.source_name.clone(),
+                content: raw.content.clone(),
+                metadata: raw.metadata.clone(),
+                provenance: raw.provenance.clone(),
+                citation,
+                semantic_score: raw.semantic_score,
+                rerank_score: raw.rerank_score,
+            }
+        })
+        .collect())
 }

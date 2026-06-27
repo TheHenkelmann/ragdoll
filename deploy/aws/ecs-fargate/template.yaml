@@ -2,17 +2,17 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: Ragdoll on ECS Fargate (desiredCount=1, EFS-backed /data)
 
 Parameters:
-  JwtSecretOverride:
+  SecretOverride:
     Type: String
     Default: ""
     NoEcho: true
-    Description: Optional override for RAGDOLL_JWT_SECRET. Leave empty to auto-generate an ephemeral secret (not stored for you).
+    Description: Optional override for RAGDOLL_SECRET. Leave empty to auto-generate an ephemeral secret (not stored for you).
   ImageUri:
     Type: String
     Default: ghcr.io/thehenkelmann/ragdoll:latest
 
 Conditions:
-  UseJwtSecretOverride: !Not [!Equals [!Ref JwtSecretOverride, ""]]
+  UseSecretOverride: !Not [!Equals [!Ref SecretOverride, ""]]
 
 Resources:
   RagdollVpc:
@@ -159,11 +159,11 @@ Resources:
           Environment:
             - Name: RAGDOLL_DATA_DIR
               Value: /data
-            - Name: RAGDOLL_JWT_SECRET
+            - Name: RAGDOLL_SECRET
               Value: !If
-                - UseJwtSecretOverride
-                - !Ref JwtSecretOverride
-                - !Sub "${AWS::StackId}-${AWS::AccountId}-${AWS::Region}-ragdoll-jwt"
+                - UseSecretOverride
+                - !Ref SecretOverride
+                - !Sub "${AWS::StackId}-${AWS::AccountId}-${AWS::Region}-ragdoll-secret"
           MountPoints:
             - SourceVolume: data
               ContainerPath: /data

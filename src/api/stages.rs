@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{require_superadmin, AuthContext};
+use crate::auth::{authorize, AuthContext, Permission};
 
 #[derive(Debug, Serialize)]
 pub struct StageRecord {
@@ -58,7 +58,9 @@ const STAGE_SELECT: &str = "SELECT s.id, s.tag, s.release_id, r.tag, s.created_a
 
 pub async fn list_stages(
     State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Vec<StageRecord>>, ApiError> {
+    authorize(&auth, Permission::StagesRead)?;
     let conn = state
         .pool
         .connect_one()
@@ -100,7 +102,7 @@ pub async fn create_stage(
     Extension(auth): Extension<AuthContext>,
     Json(body): Json<CreateStageRequest>,
 ) -> Result<Json<StageRecord>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::StagesWrite)?;
     validate_stage_tag(&body.tag)?;
     let conn = state
         .pool
@@ -136,7 +138,7 @@ pub async fn update_stage(
     Path(tag): Path<String>,
     Json(body): Json<UpdateStageRequest>,
 ) -> Result<Json<StageRecord>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::StagesWrite)?;
     let conn = state
         .pool
         .connect_one()
@@ -192,7 +194,7 @@ pub async fn delete_stage(
     Extension(auth): Extension<AuthContext>,
     Path(tag): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::StagesDelete)?;
     let conn = state
         .pool
         .connect_one()

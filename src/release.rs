@@ -38,8 +38,11 @@ impl FromRequestParts<Arc<AppState>> for ReleaseCtx {
         if let Some(tag) = extract_segment(path, &format!("{API_V1_PREFIX}/stages/")) {
             return resolve_stage(state, &tag).await;
         }
+        if let Some(tag) = extract_segment(path, &format!("{API_V1_PREFIX}/playground/")) {
+            return resolve_release(state, &tag, None).await;
+        }
         Err(ApiError::bad_request(
-            "release or stage tag required in path",
+            "release, stage, or playground tag required in path",
         ))
     }
 }
@@ -53,6 +56,20 @@ pub async fn inject_release_ctx(
     // Nested routers strip the mount prefix from req.uri(); OriginalUri keeps the full path.
     let path = uri.path();
     let tag = extract_segment(path, &format!("{API_V1_PREFIX}/releases/"))
+        .ok_or_else(|| ApiError::bad_request("release tag missing in path"))?;
+    let ctx = lookup_release_by_tag(&state, &tag).await?;
+    req.extensions_mut().insert(ctx);
+    Ok(next.run(req).await)
+}
+
+pub async fn inject_playground_ctx(
+    State(state): State<Arc<AppState>>,
+    OriginalUri(uri): OriginalUri,
+    mut req: Request<Body>,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let path = uri.path();
+    let tag = extract_segment(path, &format!("{API_V1_PREFIX}/playground/"))
         .ok_or_else(|| ApiError::bad_request("release tag missing in path"))?;
     let ctx = lookup_release_by_tag(&state, &tag).await?;
     req.extensions_mut().insert(ctx);
@@ -83,6 +100,12 @@ pub struct NestedPathId {
 pub struct NestedPathTable {
     pub tag: String,
     pub table: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NestedPathModelTag {
+    pub tag: String,
+    pub model_tag: String,
 }
 
 fn extract_segment(path: &str, prefix: &str) -> Option<String> {

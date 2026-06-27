@@ -2,7 +2,7 @@ mod support;
 
 use axum::http::StatusCode;
 
-use support::{json_request, setup_test_app};
+use support::{json_request, seed_llm_setup, setup_test_app};
 
 #[tokio::test]
 async fn create_and_list_release() {
@@ -49,6 +49,68 @@ async fn fork_release_copies_settings() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(settings["embedding_model"], "BAAI/bge-m3");
+}
+
+#[tokio::test]
+async fn fork_release_copies_llm_credentials_and_models() {
+    let app = setup_test_app().await;
+    let release_id = "00000000-0000-0000-0000-000000000001";
+    let (source_cred_id, _source_model_id) = seed_llm_setup(&app, release_id).await;
+
+    let body =
+        r#"{"tag":"forked-llm","message":"","init":{"type":"fork","source":"first-release"}}"#;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, credentials) = json_request(
+        &app,
+        "GET",
+        "/api/v1/releases/forked-llm/llm_credentials",
+        None,
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let creds = credentials.as_array().unwrap();
+    assert_eq!(creds.len(), 1);
+    assert_eq!(creds[0]["name"], "test-openai");
+    assert_ne!(creds[0]["id"].as_str().unwrap(), source_cred_id);
+
+    let (status, models) = json_request(
+        &app,
+        "GET",
+        "/api/v1/releases/forked-llm/llm_models",
+        None,
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let model_list = models.as_array().unwrap();
+    assert_eq!(model_list.len(), 1);
+    assert_eq!(model_list[0]["tag"], "mock-model");
+    assert_eq!(
+        model_list[0]["credential_id"].as_str().unwrap(),
+        creds[0]["id"].as_str().unwrap()
+    );
+
+    let (status, test_result) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/forked-llm/llm_models/mock-model/test",
+        None,
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(test_result["ok"], true);
+    assert!(test_result["message"].is_string());
 }
 
 #[tokio::test]
@@ -109,7 +171,7 @@ async fn create_and_delete_user() {
         &app,
         "POST",
         "/api/v1/users",
-        Some(r#"{"email":"newuser@example.com","password":"secret123"}"#.into()),
+        Some(r#"{"email":"newuser@example.com","password":"Secret123!@#Pass","permissions":["sources:read"]}"#.into()),
         Some(&app.token),
     )
     .await;
@@ -138,7 +200,7 @@ async fn api_key_lifecycle() {
         &app,
         "POST",
         "/api/v1/api_keys",
-        Some(r#"{"name":"ci-key"}"#.into()),
+        Some(r#"{"name":"ci-key","permissions":["sources:read"]}"#.into()),
         Some(&app.token),
     )
     .await;
@@ -163,6 +225,32 @@ async fn api_key_lifecycle() {
 }
 
 #[tokio::test]
+async fn api_key_rejects_duplicate_name() {
+    let app = setup_test_app().await;
+    let body = r#"{"name":"ci-key","permissions":["sources:read"]}"#;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/api_keys",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, err) = json_request(
+        &app,
+        "POST",
+        "/api/v1/api_keys",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["detail"].as_str().unwrap().contains("already exists"));
+}
+
+#[tokio::test]
 async fn db_viewer_rejects_api_keys_table() {
     let app = setup_test_app().await;
     let (status, _) = json_request(
@@ -177,6 +265,75 @@ async fn db_viewer_rejects_api_keys_table() {
 }
 
 #[tokio::test]
+async fn webhook_urls_are_unique_per_release() {
+    let app = setup_test_app().await;
+    let body = r#"{"type":"ingest_status","url":"https://example.com/hook","events":["completed","failed"],"active":true}"#;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/first-release/webhooks",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, err) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/first-release/webhooks",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["detail"]
+        .as_str()
+        .unwrap()
+        .contains("webhook url already exists"));
+}
+
+#[tokio::test]
+async fn webhook_patch_rejects_duplicate_url_in_same_release() {
+    let app = setup_test_app().await;
+    let (status, first) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/first-release/webhooks",
+        Some(r#"{"type":"ingest_status","url":"https://example.com/first"}"#.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(first["id"].is_string());
+
+    let (status, second) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/first-release/webhooks",
+        Some(r#"{"type":"ingest_status","url":"https://example.com/second"}"#.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let second_id = second["id"].as_str().unwrap();
+
+    let (status, err) = json_request(
+        &app,
+        "PATCH",
+        &format!("/api/v1/releases/first-release/webhooks/{second_id}"),
+        Some(r#"{"url":"https://example.com/first"}"#.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(err["detail"]
+        .as_str()
+        .unwrap()
+        .contains("webhook url already exists"));
+}
+
+#[tokio::test]
 async fn db_viewer_lists_sources_table() {
     let app = setup_test_app().await;
     let (status, json) = json_request(
@@ -188,7 +345,9 @@ async fn db_viewer_lists_sources_table() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(json.is_array());
+    assert!(json.get("columns").and_then(|v| v.as_array()).is_some());
+    assert!(json.get("rows").and_then(|v| v.as_array()).is_some());
+    assert!(json.get("facets").and_then(|v| v.as_object()).is_some());
 }
 
 #[tokio::test]

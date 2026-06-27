@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from ragdoll_worker.config import WorkerConfig
-from ragdoll_worker.models import _model_is_complete
+from ragdoll_worker.models import _model_is_complete, _native_model_names
 
 
 def _write_model_files(model_dir: Path) -> None:
@@ -37,6 +37,14 @@ def test_model_is_complete_true_when_all_files_present(tmp_path: Path) -> None:
     model_dir = tmp_path / "complete"
     _write_model_files(model_dir)
     assert _model_is_complete(model_dir)
+
+
+def test_native_model_names_is_nonempty_and_cached() -> None:
+    names = _native_model_names()
+    assert isinstance(names, frozenset)
+    assert len(names) > 0
+    # Cached: identical object on subsequent calls.
+    assert _native_model_names() is names
 
 
 def test_embedder_raises_when_model_missing(worker_config: WorkerConfig) -> None:

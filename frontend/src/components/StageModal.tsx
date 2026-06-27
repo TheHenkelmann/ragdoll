@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ReleaseRecord, StageRecord, api } from "../api/client";
+import { useSnackbar } from "../context/SnackbarContext";
+import { formatApiError } from "../utils/snackbarFormat";
 
 type Props = {
   open: boolean;
@@ -14,19 +16,21 @@ type Props = {
 
 export function StageModal({ open, onClose, releases, stages, onChanged }: Props) {
   const navigate = useNavigate();
+  const snackbar = useSnackbar();
   const [tag, setTag] = useState("");
   const [releaseTag, setReleaseTag] = useState(releases[0]?.tag ?? "first-release");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<StageRecord[]>(stages);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    setError(null);
     void api<StageRecord[]>("/stages")
       .then(setItems)
-      .catch((err) => setError(String(err)))
+      .catch((err) => {
+        const { title, body } = formatApiError(err);
+        snackbar.error(title, body || undefined);
+      })
       .finally(() => setLoading(false));
     void api<ReleaseRecord[]>("/releases").then((r) => {
       if (r[0]?.tag) setReleaseTag(r[0].tag);
@@ -41,7 +45,6 @@ export function StageModal({ open, onClose, releases, stages, onChanged }: Props
 
   async function createStage(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     try {
       await api("/stages", {
         method: "POST",
@@ -51,12 +54,12 @@ export function StageModal({ open, onClose, releases, stages, onChanged }: Props
       onChanged();
       setItems(await api<StageRecord[]>("/stages"));
     } catch (err) {
-      setError(String(err));
+      const { title, body } = formatApiError(err);
+      snackbar.error(title, body || undefined);
     }
   }
 
   async function retarget(stage: StageRecord, nextReleaseTag: string) {
-    setError(null);
     try {
       await api(`/stages/${stage.tag}`, {
         method: "PATCH",
@@ -65,29 +68,29 @@ export function StageModal({ open, onClose, releases, stages, onChanged }: Props
       onChanged();
       setItems(await api<StageRecord[]>("/stages"));
     } catch (err) {
-      setError(String(err));
+      const { title, body } = formatApiError(err);
+      snackbar.error(title, body || undefined);
     }
   }
 
   async function remove(stage: StageRecord) {
-    setError(null);
     try {
       await api(`/stages/${stage.tag}`, { method: "DELETE" });
       onChanged();
       setItems(await api<StageRecord[]>("/stages"));
     } catch (err) {
-      setError(String(err));
+      const { title, body } = formatApiError(err);
+      snackbar.error(title, body || undefined);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div className="card w-full max-w-lg space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium">Stages</h3>
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
         </div>
-        {error && <div className="text-sm text-red-400">{error}</div>}
         <div className="space-y-2">
           <div className="text-sm font-medium">Existing stages</div>
           {loading && <p className="text-sm text-[var(--muted)]">Loading…</p>}

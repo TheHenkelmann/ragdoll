@@ -3,11 +3,13 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
+use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
+use crate::auth::{authorize, AuthContext, Permission};
 use crate::release::{lookup_release_by_tag, lookup_stage_by_tag};
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +66,7 @@ pub struct AnalyticsResponse {
     pub search_latency: LatencyStats,
     pub rerank_latency: LatencyStats,
     pub store_latency: LatencyStats,
+    pub generation_latency: LatencyStats,
     pub source_count: i64,
     pub chunk_count: i64,
     pub chunks_per_source: Vec<SourceChunkCount>,
@@ -165,8 +168,10 @@ async fn build_query_filter(
 
 pub async fn get_analytics(
     State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
     Query(params): Query<AnalyticsParams>,
 ) -> Result<Json<AnalyticsResponse>, ApiError> {
+    authorize(&auth, Permission::AnalyticsRead)?;
     let filter = build_query_filter(&state, &params).await?;
     let conn = state
         .pool
@@ -217,11 +222,14 @@ pub async fn get_analytics(
         "{} AND q.response_status >= 200 AND q.response_status < 300",
         filter.sql
     );
-    let total_latency = latency_stats(&conn, "total_ms", &latency_filter, &filter.bind).await?;
+    let total_latency =
+        latency_stats(&conn, "total_ragdoll_ms", &latency_filter, &filter.bind).await?;
     let embed_latency = latency_stats(&conn, "embed_ms", &latency_filter, &filter.bind).await?;
     let search_latency = latency_stats(&conn, "search_ms", &latency_filter, &filter.bind).await?;
     let rerank_latency = latency_stats(&conn, "rerank_ms", &latency_filter, &filter.bind).await?;
     let store_latency = latency_stats(&conn, "store_ms", &latency_filter, &filter.bind).await?;
+    let generation_latency =
+        latency_stats(&conn, "generation_total_ms", &latency_filter, &filter.bind).await?;
 
     let release_id = if params.lens == "release" {
         lookup_release_by_tag(&state, &params.tag).await?.release_id
@@ -371,6 +379,7 @@ pub async fn get_analytics(
         search_latency,
         rerank_latency,
         store_latency,
+        generation_latency,
         source_count,
         chunk_count,
         chunks_per_source,

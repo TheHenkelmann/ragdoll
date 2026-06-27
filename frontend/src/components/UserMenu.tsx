@@ -28,7 +28,7 @@ export function UserMenu() {
       {open && (
         <div className="absolute right-0 top-10 z-30 min-w-48 rounded-xl border p-2 shadow-lg" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
           <div className="px-3 py-2 text-sm text-[var(--muted)] truncate">{status?.email}</div>
-          <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-black/10" onClick={() => { logout(); setOpen(false); }}>
+          <button type="button" className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--selected)]" onClick={() => { logout(); setOpen(false); }}>
             Logout
           </button>
         </div>

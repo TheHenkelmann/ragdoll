@@ -12,6 +12,7 @@ import type {
   RuntimeSettings,
   SourceRecord,
   StageRecord,
+  SystemMetricsResponse,
 } from "../api/client";
 
 export function jsonResponse(data: unknown, status = 200): Response {
@@ -33,6 +34,7 @@ export const mockAuthStatus: AuthStatus = {
   email: "admin@ragdoll.ai",
   is_superadmin: true,
   password_is_default: false,
+  permissions: [],
 };
 
 export const mockAuthInfo: AuthInfo = {
@@ -67,6 +69,8 @@ export const mockSettings: RuntimeSettings = {
   max_chunk_tokens: 512,
   max_upload_size: 10485760,
   max_batch_size: 100,
+  generation_allowed: true,
+  rerank_max_length: 256,
 };
 
 export const mockAnalytics: AnalyticsResponse = {
@@ -77,12 +81,31 @@ export const mockAnalytics: AnalyticsResponse = {
   search_latency: { p50: 30, p95: 60 },
   rerank_latency: { p50: 40, p95: 80 },
   store_latency: { p50: 10, p95: 20 },
+  generation_latency: { p50: 50, p95: 120 },
   source_count: 2,
   chunk_count: 5,
   chunks_per_source: [{ source_id: "src-1", name: "Doc A", chunk_count: 3 }],
   metadata_keys: [["department", 2]],
   query_chunk_hits: [{ chunk_id: "chk-1", source_id: "src-1", source_name: "Doc A", hit_count: 5 }],
   query_chunk_metadata_keys: [["topic", 3]],
+};
+
+export const mockSystemMetrics: SystemMetricsResponse = {
+  samples: [
+    {
+      recorded_at: "2024-06-01T12:00:00Z",
+      cpu_percent: 25,
+      memory_used_bytes: 8_000_000_000,
+      memory_total_bytes: 16_000_000_000,
+    },
+  ],
+  current: {
+    cpu_percent: 30,
+    memory_used_bytes: 8_000_000_000,
+    memory_total_bytes: 16_000_000_000,
+    memory_available_bytes: 8_000_000_000,
+    cpu_cores: 8,
+  },
 };
 
 export const mockSource: SourceRecord = {
@@ -111,7 +134,7 @@ export const mockQueryResult: QueryResult = {
     search_ms: 20,
     rerank_ms: 5,
     store_ms: 3,
-    total_ms: 39,
+    total_ragdoll_ms: 39,
     candidate_count: 10,
     result_count: 3,
   },
@@ -144,12 +167,13 @@ export const mockQueryDetail: QueryDetail = {
   search_ms: 20,
   rerank_ms: 5,
   store_ms: 3,
-  total_ms: 39,
+  total_ragdoll_ms: 39,
 };
 
-export function authRoutes(): MockRoute[] {
+export function authRoutes(overrides: Partial<AuthStatus> = {}): MockRoute[] {
+  const status = { ...mockAuthStatus, ...overrides };
   return [
-    { path: "/auth/status", response: mockAuthStatus },
+    { path: "/auth/status", response: status },
     { path: "/auth/info", response: mockAuthInfo },
     {
       path: "/auth/login",

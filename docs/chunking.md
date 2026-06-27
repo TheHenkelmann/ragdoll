@@ -59,7 +59,7 @@ distance is boosted so splits prefer section boundaries.
 If a group still exceeds `max_chunk_tokens`:
 
 - **Multiple units** → recursive semantic split on that subset.
-- **One splittable paragraph** → sentence split (pysbd, German default) using the
+- **One splittable paragraph** → sentence split (pysbd, English default) using the
   same breakpoint logic.
 - **One non-splittable unit** (e.g. a long list item) → kept whole; a warning is
   logged if it exceeds the token limit.

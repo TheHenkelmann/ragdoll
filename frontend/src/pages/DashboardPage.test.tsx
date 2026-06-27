@@ -8,6 +8,7 @@ import {
   authRoutes,
   metaRoutes,
   mockAnalytics,
+  mockSystemMetrics,
   setupMockFetch,
 } from "../test/mockApi";
 import { renderWithProviders } from "../test/renderWithProviders";
@@ -23,6 +24,7 @@ describe("DashboardPage", () => {
       ...authRoutes(),
       ...metaRoutes(),
       { path: "/analytics", response: mockAnalytics },
+      { path: "/system-metrics", response: mockSystemMetrics },
     ]);
     return renderWithProviders(
       <Routes>

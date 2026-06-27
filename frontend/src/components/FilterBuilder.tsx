@@ -101,7 +101,7 @@ export function FilterBuilder({ value, onChange }: Props) {
         </button>
       </div>
       <div className="space-y-2">
-        <div className="text-sm font-medium">JSON {!jsonValid && <span className="text-red-400">(invalid — fix to sync)</span>}</div>
+        <div className="text-sm font-medium">JSON {!jsonValid && <span className="text-error">(invalid — fix to sync)</span>}</div>
         <textarea
           className="input min-h-48 font-mono text-xs"
           value={jsonText}

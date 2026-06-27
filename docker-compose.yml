@@ -7,7 +7,7 @@ services:
       - "8080:8080"
     environment:
       RAGDOLL_DATA_DIR: /data
-      RAGDOLL_JWT_SECRET: ${RAGDOLL_JWT_SECRET:-change-me-in-production}
+      RAGDOLL_SECRET: ${RAGDOLL_SECRET:-change-me-in-production}
       RUST_LOG: info,ragdoll=debug
     volumes:
       - ragdoll-data:/data

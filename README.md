@@ -9,24 +9,25 @@
   <img src="./branding/logo.png" alt="Ragdoll" width="240">
 </div>
 
-**One-stop, fully local RAG pipeline in a single Docker container.**
+**One-stop RAG pipeline in a single Docker container — local retrieval, optional BYO-LLM answers.**
 
 Ragdoll combines a Rust query gateway, a Python ingest worker, libSQL with
-embedded vectors, and local ONNX embedding/reranking models. There are **no calls
-to external LLMs** — Ragdoll is **retrieval-only**: ingest documents, embed them
-locally, search with hard metadata filters, optionally rerank, and return ranked
-chunks.
+embedded vectors, and local ONNX embedding/reranking models. Ingest, embed, search,
+filter, and rerank run **fully on your hardware**. Answer generation is **opt-in**
+per query via your own external LLM credentials (OpenAI, Azure, Vertex, …).
 
 ## What Ragdoll does
 
 | Capability | Description |
 |---|---|
 | **Ingest** | Queue text, files (PDF, DOCX, …), or URLs; the worker extracts, Semantic-Split chunks, embeds, and stores vectors |
-| **Retrieve** | Cosine vector search over filtered chunk rows, optional cross-encoder rerank |
+| **Retrieve** | Cosine vector search (optional hybrid BM25), hard metadata filters, cross-encoder rerank, citations |
+| **Generate** | Optional BYO-LLM answers with streaming SSE ([docs/querying.md](docs/querying.md)) |
 | **Filter** | Hard metadata filters *before* search (`meta.department`, `source_id`, nested keys, …) |
 | **Version** | Releases hold content snapshots; stages point production traffic at a release |
+| **Secure** | Fine-grained RBAC for users and API keys; rate limits per key |
 | **Observe** | Per-query and per-ingest latency metrics, analytics aggregates, DB viewer |
-| **Operate** | Web UI for dashboard, playground, sources, settings, and database inspection |
+| **Operate** | Web UI, backups, webhooks, ONNX model management, reindex |
 
 ```text
 Client (UI / curl / SDK)
@@ -48,7 +49,7 @@ Client (UI / curl / SDK)
 ## Quick start
 
 ```bash
-export RAGDOLL_JWT_SECRET=change-me-in-production
+export RAGDOLL_SECRET=change-me-in-production
 docker compose up --build
 ```
 
@@ -68,9 +69,14 @@ curl -sS -X POST http://localhost:8080/api/v1/releases/first-release/sources \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '[{"type":"text","name":"demo","content":"Ragdoll is a fully local RAG pipeline."}]'
 
-# 3. Query it (poll the source until status=completed first)
-curl -sS -X POST http://localhost:8080/api/v1/releases/first-release/queries \
+# 3. Create an API key (queries require an API key, not a session token)
+API_KEY=$(curl -sS -X POST http://localhost:8080/api/v1/api_keys \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"quickstart","permissions":["queries:run"]}' | jq -r .token)
+
+# 4. Query it (poll the source until status=completed first)
+curl -sS -X POST http://localhost:8080/api/v1/releases/first-release/queries \
+  -H "Authorization: Bearer $API_KEY" -H 'Content-Type: application/json' \
   -d '[{"text":"what is ragdoll?","top_k":5}]'
 ```
 
@@ -89,8 +95,9 @@ The [docs/](docs/) folder is the reference manual; this README is the front door
 | Understand releases, stages, and auth | [docs/concepts.md](docs/concepts.md) |
 | Ingest files, URLs, and metadata | [docs/ingestion.md](docs/ingestion.md) |
 | Tune chunk quality (Semantic Split) | [docs/chunking.md](docs/chunking.md) |
-| Query with filters and rerank | [docs/querying.md](docs/querying.md) |
-| Operate the UI, models, analytics | [docs/operations.md](docs/operations.md) |
+| Query with filters, rerank, and generation | [docs/querying.md](docs/querying.md) |
+| Embedding & rerank models (ONNX) | [docs/models.md](docs/models.md) |
+| Operate the UI, backups, analytics | [docs/operations.md](docs/operations.md) |
 | Configure environment variables | [docs/configuration.md](docs/configuration.md) |
 | Understand the architecture | [docs/architecture.md](docs/architecture.md) |
 | **Avoid the common traps** | [docs/pitfalls.md](docs/pitfalls.md) |
@@ -105,7 +112,7 @@ Ragdoll is a **single-replica** container with persistent `/data` storage. See [
 
 Image: `ghcr.io/thehenkelmann/ragdoll:latest`
 
-**JWT secret:** Cloud deploy templates generate a **random `RAGDOLL_JWT_SECRET` automatically**. It is not saved or shown to you after deploy. To use your own stable secret, set `export RAGDOLL_JWT_SECRET=...` before running a deploy script, or fill in the optional override parameter in Azure/AWS portal forms (parameter name: `jwtSecretOverride` / `JwtSecretOverride`).
+**Master secret:** Cloud deploy templates generate a **random `RAGDOLL_SECRET` automatically**. It is not saved or shown to you after deploy. To use your own stable secret, set `export RAGDOLL_SECRET=...` before running a deploy script, or fill in the optional override parameter in Azure/AWS portal forms (parameter name: `secretOverride` / `SecretOverride`).
 
 ### Serverless (max 1 instance)
 

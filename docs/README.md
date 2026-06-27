@@ -6,7 +6,7 @@ the [root README](../README.md).
 ## Read in order (first time)
 
 1. [getting-started.md](getting-started.md) — zero to your first query
-2. [concepts.md](concepts.md) — releases, stages, planes, auth (the mental model)
+2. [concepts.md](concepts.md) — releases, stages, planes, auth, permissions
 3. [ingestion.md](ingestion.md) — getting content in
 4. [querying.md](querying.md) — getting ranked results out
 
@@ -14,8 +14,9 @@ the [root README](../README.md).
 
 | Topic | Doc |
 |---|---|
+| Retrieval models (embedding & rerank) | [models.md](models.md) |
 | Chunking internals & tuning | [chunking.md](chunking.md) |
-| Running the server, UI, models, analytics | [operations.md](operations.md) |
+| Running the server, UI, backups, BYO-LLM | [operations.md](operations.md) |
 | Environment variables | [configuration.md](configuration.md) |
 | Components & data flow | [architecture.md](architecture.md) |
 | Common traps, in one place | [pitfalls.md](pitfalls.md) |

@@ -9,7 +9,7 @@ collects the handful of traps that catch most newcomers.
 ## 1. Start the server
 
 ```bash
-export RAGDOLL_JWT_SECRET=change-me-in-production
+export RAGDOLL_SECRET=change-me-in-production
 docker compose up --build
 ```
 
@@ -17,7 +17,7 @@ Or run the image directly with a bind mount for the data directory:
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e RAGDOLL_JWT_SECRET=change-me-in-production \
+  -e RAGDOLL_SECRET=change-me-in-production \
   -v /path/to/data:/data \
   ragdoll:latest
 ```
@@ -25,8 +25,9 @@ docker run --rm -p 8080:8080 \
 > **First start downloads models.** On the very first boot Ragdoll fetches the
 > ONNX embedding and rerank models (~2 GB) into `${RAGDOLL_DATA_DIR}/models`.
 > Until that finishes, `/api/v1/health` reports `ready: false` and queries will
-> fail. This is normal — watch the logs and wait. For air-gapped setups see
-> [operations.md → Offline mode](operations.md#offline-mode).
+> fail. This is normal — watch the logs and wait. See [models.md](models.md) for
+> what is downloaded and [operations.md → Offline mode](operations.md#offline-mode)
+> for air-gapped setups.
 
 ## 2. Confirm it is ready
 
@@ -86,19 +87,38 @@ curl -sS "http://localhost:8080/api/v1/releases/first-release/sources?limit=10" 
 > matches right after ingesting, the worker is probably still running. Poll the
 > source status before querying.
 
-## 5. Run your first query
+## 5. Create an API key
+
+Release and stage **query** endpoints require an **API key**, not your session
+token. Create one with `queries:run`:
+
+```bash
+curl -sS -X POST http://localhost:8080/api/v1/api_keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"dev","permissions":["queries:run"]}'
+
+export API_KEY="<token from the response — shown only once>"
+```
+
+> New API key tokens are prefixed with `rd_`. Copy the token immediately; it
+> cannot be retrieved later. For interactive testing in the UI, use the
+> **Playground** tab (session token) instead. See [concepts.md](concepts.md).
+
+## 6. Run your first query
 
 ```bash
 curl -sS -X POST http://localhost:8080/api/v1/releases/first-release/queries \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "Authorization: Bearer $API_KEY" \
   -H 'Content-Type: application/json' \
   -d '[{"text":"what is ragdoll?","top_k":5}]'
 ```
 
-You get back ranked chunks with similarity scores. That is the full loop:
-**ingest → embed → search → rank**, all local.
+You get back ranked chunks with similarity scores and **citations** (source
+provenance). That is the full loop: **ingest → embed → search → rank**, with
+retrieval models running locally.
 
-## 6. Do it for real
+## 7. Do it for real
 
 The hands-on tutorial ingests six realistic documents (`.md`, `.csv`, `.json`,
 `.txt`, a URL, and plain text), attaches metadata, and shows retrieval with and
@@ -118,5 +138,6 @@ without filters:
 | Ingest files, URLs, and metadata | [ingestion.md](ingestion.md) |
 | Tune chunk quality | [chunking.md](chunking.md) |
 | Filter and rerank queries | [querying.md](querying.md) |
-| Operate the UI, models, analytics | [operations.md](operations.md) |
+| Embedding & rerank models | [models.md](models.md) |
+| Operate the UI, backups, analytics | [operations.md](operations.md) |
 | Avoid the common traps | [pitfalls.md](pitfalls.md) |

@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use libsql::{Builder, Connection, Database};
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::db::DbError;
@@ -12,7 +13,7 @@ const MAX_LOCKED_ATTEMPTS: u32 = 8;
 
 #[derive(Clone)]
 pub struct DbPool {
-    db: Arc<Database>,
+    db: Arc<RwLock<Database>>,
 }
 
 impl DbPool {
@@ -24,7 +25,9 @@ impl DbPool {
 
         let db = Builder::new_local(&config.db_path).build().await?;
 
-        let pool = Self { db: Arc::new(db) };
+        let pool = Self {
+            db: Arc::new(RwLock::new(db)),
+        };
         pool.apply_pragmas().await?;
         Ok(pool)
     }
@@ -37,7 +40,9 @@ impl DbPool {
 
         let db = Builder::new_local(path).build().await?;
 
-        let pool = Self { db: Arc::new(db) };
+        let pool = Self {
+            db: Arc::new(RwLock::new(db)),
+        };
         pool.apply_pragmas().await?;
         Ok(pool)
     }
@@ -50,11 +55,24 @@ impl DbPool {
 
     pub async fn connect_one(&self) -> Result<Connection, DbError> {
         retry_on_locked(|| async {
-            let conn = self.db.connect().map_err(DbError::Libsql)?;
+            let db = self.db.read().await;
+            let conn = db.connect().map_err(DbError::Libsql)?;
             configure_connection(&conn).await?;
             Ok(conn)
         })
         .await
+    }
+
+    pub async fn reload(&self, config: &Config) -> Result<(), DbError> {
+        let new_db = Builder::new_local(&config.db_path)
+            .build()
+            .await
+            .map_err(DbError::Libsql)?;
+        {
+            let mut guard = self.db.write().await;
+            *guard = new_db;
+        }
+        self.apply_pragmas().await
     }
 }
 

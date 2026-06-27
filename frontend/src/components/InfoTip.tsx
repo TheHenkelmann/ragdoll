@@ -20,8 +20,8 @@ export function InfoTip({
         type="button"
         className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] hover:text-[var(--text)]"
         style={{
-          border: `1px solid ${danger ? "#ef4444" : "var(--border)"}`,
-          color: danger ? "#ef4444" : "var(--muted)",
+          border: `1px solid ${danger ? "var(--danger)" : "var(--border)"}`,
+          color: danger ? "var(--danger-text)" : "var(--muted)",
         }}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}

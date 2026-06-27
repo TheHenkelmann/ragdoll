@@ -3,17 +3,20 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthInfo, publicApi } from "../api/client";
+import { PasswordField } from "../components/PasswordField";
 import { useAuth } from "../context/AuthContext";
+import { useSnackbar } from "../context/SnackbarContext";
 import { safeRedirect } from "../utils/redirect";
+import { formatApiError } from "../utils/snackbarFormat";
 
 export function LoginPage() {
   const { login, token } = useAuth();
+  const snackbar = useSnackbar();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = safeRedirect(searchParams.get("redirect"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void publicApi<AuthInfo>("/auth/info")
@@ -30,12 +33,12 @@ export function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     try {
       await login(email, password);
       navigate(redirect, { replace: true });
     } catch (err) {
-      setError(String(err));
+      const { title, body } = formatApiError(err);
+      snackbar.error(title, body || undefined);
     }
   }
 
@@ -51,11 +54,13 @@ export function LoginPage() {
           <span className="text-sm">Email</span>
           <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
-        <label className="block space-y-1">
-          <span className="text-sm">Password</span>
-          <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        <PasswordField
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          required
+          autoComplete="current-password"
+        />
         <button className="btn-primary w-full" type="submit">Sign in</button>
       </form>
     </div>

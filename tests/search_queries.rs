@@ -4,10 +4,15 @@ use axum::http::StatusCode;
 
 use support::{json_request, seed_demo_chunk, setup_test_app};
 
+async fn api_key_token(app: &support::TestApp) -> String {
+    app.create_api_key_token("query-tests").await
+}
+
 #[tokio::test]
 async fn query_with_rerank_returns_rerank_scores() {
     let app = setup_test_app().await;
     seed_demo_chunk(&app.state).await;
+    let token = api_key_token(&app).await;
 
     let body = r#"[{"text":"RAG pipeline retrieval","top_k":3,"rerank":true}]"#;
     let (status, json) = json_request(
@@ -15,7 +20,7 @@ async fn query_with_rerank_returns_rerank_scores() {
         "POST",
         "/api/v1/releases/first-release/queries",
         Some(body.into()),
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -30,14 +35,15 @@ async fn query_with_rerank_returns_rerank_scores() {
 async fn query_respects_top_k() {
     let app = setup_test_app().await;
     seed_demo_chunk(&app.state).await;
+    let token = api_key_token(&app).await;
 
-    let body = r#"[{"text":"RAG","top_k":1,"rerank":false}]"#;
+    let body = r#"[{"text":"RAG","top_k":1,"rerank":false,"min_semantic_score":0}]"#;
     let (status, json) = json_request(
         &app,
         "POST",
         "/api/v1/releases/first-release/queries",
         Some(body.into()),
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -46,35 +52,99 @@ async fn query_respects_top_k() {
 }
 
 #[tokio::test]
-async fn query_playground_mode_returns_all_candidates() {
+async fn session_token_rejected_on_release_queries() {
     let app = setup_test_app().await;
     seed_demo_chunk(&app.state).await;
+    let body = r#"[{"text":"RAG","top_k":1,"rerank":false}]"#;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/releases/first-release/queries",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
 
-    let body = r#"[{"text":"RAG pipeline","top_k":1,"rerank":true}]"#;
+#[tokio::test]
+async fn playground_query_accepts_session_token() {
+    let app = setup_test_app().await;
+    seed_demo_chunk(&app.state).await;
+    let body = r#"[{"text":"RAG pipeline","top_k":1,"rerank":false}]"#;
     let (status, json) = json_request(
         &app,
         "POST",
-        "/api/v1/releases/first-release/queries?playground=true",
+        "/api/v1/playground/first-release/queries",
         Some(body.into()),
         Some(&app.token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let matches = json["items"][0]["result"]["matches"].as_array().unwrap();
-    assert!(!matches.is_empty());
+    assert_eq!(json["items"][0]["status"], 200);
+}
+
+#[tokio::test]
+async fn playground_rejects_api_key() {
+    let app = setup_test_app().await;
+    seed_demo_chunk(&app.state).await;
+    let token = api_key_token(&app).await;
+    let body = r#"[{"text":"RAG","top_k":1,"rerank":false}]"#;
+    let (status, _) = json_request(
+        &app,
+        "POST",
+        "/api/v1/playground/first-release/queries",
+        Some(body.into()),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn playground_rerank_off_respects_top_k() {
+    let app = setup_test_app().await;
+    seed_demo_chunk(&app.state).await;
+    let body = r#"[{"text":"RAG","top_k":1,"rerank":false,"rerank_candidates":20}]"#;
+    let (status, json) = json_request(
+        &app,
+        "POST",
+        "/api/v1/playground/first-release/queries",
+        Some(body.into()),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let detail_id = json["items"][0]["result"]["query_id"].as_str().unwrap();
+    let (_, detail) = json_request(
+        &app,
+        "GET",
+        &format!("/api/v1/playground/first-release/queries/{detail_id}"),
+        None,
+        Some(&app.token),
+    )
+    .await;
+    let semantic = detail["chunks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["step"] == "semantic")
+        .count();
+    assert_eq!(semantic, 1);
 }
 
 #[tokio::test]
 async fn get_queries_after_search() {
     let app = setup_test_app().await;
     seed_demo_chunk(&app.state).await;
+    let token = api_key_token(&app).await;
     let body = r#"[{"text":"RAG","top_k":3,"rerank":false}]"#;
     json_request(
         &app,
         "POST",
         "/api/v1/releases/first-release/queries",
         Some(body.into()),
-        Some(&app.token),
+        Some(&token),
     )
     .await;
 
@@ -83,7 +153,7 @@ async fn get_queries_after_search() {
         "GET",
         "/api/v1/releases/first-release/queries?limit=5",
         None,
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -94,13 +164,14 @@ async fn get_queries_after_search() {
 async fn get_query_detail_includes_chunks() {
     let app = setup_test_app().await;
     seed_demo_chunk(&app.state).await;
+    let token = api_key_token(&app).await;
     let body = r#"[{"text":"local RAG pipeline","top_k":3,"rerank":false}]"#;
     let (_, posted) = json_request(
         &app,
         "POST",
         "/api/v1/releases/first-release/queries",
         Some(body.into()),
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     let query_id = posted["items"][0]["result"]["query_id"].as_str().unwrap();
@@ -110,7 +181,7 @@ async fn get_query_detail_includes_chunks() {
         "GET",
         &format!("/api/v1/releases/first-release/queries/{query_id}"),
         None,
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -132,12 +203,13 @@ async fn get_query_detail_includes_chunks() {
 #[tokio::test]
 async fn get_query_detail_not_found() {
     let app = setup_test_app().await;
+    let token = api_key_token(&app).await;
     let (status, _) = json_request(
         &app,
         "GET",
         "/api/v1/releases/first-release/queries/missing-id",
         None,
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -146,12 +218,13 @@ async fn get_query_detail_not_found() {
 #[tokio::test]
 async fn delete_queries_requires_filter() {
     let app = setup_test_app().await;
+    let token = api_key_token(&app).await;
     let (status, _) = json_request(
         &app,
         "DELETE",
         "/api/v1/releases/first-release/queries",
         None,
-        Some(&app.token),
+        Some(&token),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);

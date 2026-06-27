@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ReleaseRecord, StageRecord, api } from "../api/client";
+import { PermissionDenied } from "../components/PermissionDenied";
 import {
   CreateTagControl,
   DeleteConfirmDialog,
@@ -10,6 +11,10 @@ import {
   ForkControl,
   ViewButton,
 } from "../components/ObjectOverview";
+import { usePermissions } from "../hooks/usePermissions";
+import { PERM } from "../permissions";
+import { useSnackbar } from "../context/SnackbarContext";
+import { pushApiError } from "../utils/snackbarFormat";
 
 type OverviewKind = "release" | "stage";
 
@@ -18,41 +23,57 @@ type Props = {
 };
 
 export function ObjectOverviewPage({ kind }: Props) {
+  const snackbar = useSnackbar();
   const navigate = useNavigate();
+  const { can, ready } = usePermissions();
   const isRelease = kind === "release";
+  const readPerm = isRelease ? PERM.releases.read : PERM.stages.read;
+  const writePerm = isRelease ? PERM.releases.write : PERM.stages.write;
+  const deletePerm = isRelease ? PERM.releases.delete : PERM.stages.delete;
+  const canRead = can(readPerm);
+  const canWrite = can(writePerm);
+  const canDelete = can(deletePerm);
+  const canReadReleases = can(PERM.releases.read);
   const title = isRelease ? "Releases" : "Stages";
   const typeLabel = kind;
   const searchPlaceholder = isRelease ? "Search releases" : "Search stages";
 
   const [search, setSearch] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [releases, setReleases] = useState<ReleaseRecord[]>([]);
   const [stages, setStages] = useState<StageRecord[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<{ tag: string } | null>(null);
 
   const reload = () => {
+    if (!canRead) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    setError(null);
     if (isRelease) {
       void api<ReleaseRecord[]>("/releases")
         .then(setReleases)
-        .catch((err) => setError(String(err)))
+        .catch((err) => pushApiError(snackbar.error, err))
         .finally(() => setLoading(false));
       return;
     }
-    void Promise.all([api<ReleaseRecord[]>("/releases"), api<StageRecord[]>("/stages")])
-      .then(([rels, stageList]) => {
-        setReleases(rels);
-        setStages(stageList);
-      })
-      .catch((err) => setError(String(err)))
+    const fetches: Promise<void>[] = [
+      api<StageRecord[]>("/stages").then(setStages).then(() => undefined),
+    ];
+    if (canReadReleases) {
+      fetches.push(api<ReleaseRecord[]>("/releases").then(setReleases).then(() => undefined));
+    } else {
+      setReleases([]);
+    }
+    void Promise.all(fetches)
+      .catch((err) => pushApiError(snackbar.error, err))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
+    if (!ready) return;
     reload();
-  }, [kind]);
+  }, [kind, ready, canRead, canReadReleases]);
 
   const filteredReleases = releases.filter(
     (r) =>
@@ -68,7 +89,6 @@ export function ObjectOverviewPage({ kind }: Props) {
   );
 
   async function retargetStage(stage: StageRecord, releaseTag: string) {
-    setError(null);
     try {
       await api(`/stages/${stage.tag}`, {
         method: "PATCH",
@@ -76,12 +96,11 @@ export function ObjectOverviewPage({ kind }: Props) {
       });
       reload();
     } catch (err) {
-      setError(String(err));
+      pushApiError(snackbar.error, err);
     }
   }
 
   async function forkRelease(sourceTag: string, tag: string) {
-    setError(null);
     try {
       await api("/releases", {
         method: "POST",
@@ -89,13 +108,12 @@ export function ObjectOverviewPage({ kind }: Props) {
       });
       reload();
     } catch (err) {
-      setError(String(err));
+      pushApiError(snackbar.error, err);
       throw err;
     }
   }
 
   async function renameTag(currentTag: string, tag: string) {
-    setError(null);
     try {
       await api(`/${isRelease ? "releases" : "stages"}/${currentTag}`, {
         method: "PATCH",
@@ -103,7 +121,7 @@ export function ObjectOverviewPage({ kind }: Props) {
       });
       reload();
     } catch (err) {
-      setError(String(err));
+      pushApiError(snackbar.error, err);
       throw err;
     }
   }
@@ -112,17 +130,20 @@ export function ObjectOverviewPage({ kind }: Props) {
     return isRelease ? `/releases/${tag}` : `/stages/${tag}`;
   }
 
+  if (ready && !canRead) {
+    return <PermissionDenied permission={readPerm} />;
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-semibold">{title}</h2>
-      {error && <div className="text-sm text-red-400">{error}</div>}
 
       <div className="flex flex-wrap items-center gap-3">
         <CreateTagControl
           label={isRelease ? "Create empty release" : "Create stage"}
           maxLength={isRelease ? 50 : 12}
+          disabled={!canWrite}
           onCreate={async (tag) => {
-            setError(null);
             try {
               if (isRelease) {
                 await api("/releases", {
@@ -137,7 +158,7 @@ export function ObjectOverviewPage({ kind }: Props) {
               }
               reload();
             } catch (err) {
-              setError(String(err));
+              pushApiError(snackbar.error, err);
               throw err;
             }
           }}
@@ -170,11 +191,13 @@ export function ObjectOverviewPage({ kind }: Props) {
               <ForkControl
                 sourceTag={r.tag}
                 maxLength={50}
+                disabled={!canWrite}
                 onFork={(tag) => forkRelease(r.tag, tag)}
               />
               <EditableTag
                 tag={r.tag}
                 maxLength={50}
+                disabled={!canWrite}
                 onRename={(tag) => renameTag(r.tag, tag)}
                 subtitle={
                   r.stage_tags.length > 0 ? (
@@ -187,6 +210,7 @@ export function ObjectOverviewPage({ kind }: Props) {
               <button
                 type="button"
                 className="btn-danger ml-auto shrink-0"
+                disabled={!canDelete}
                 onClick={() => setDeleteTarget({ tag: r.tag })}
               >
                 Delete
@@ -205,11 +229,13 @@ export function ObjectOverviewPage({ kind }: Props) {
               <EditableTag
                 tag={s.tag}
                 maxLength={12}
+                disabled={!canWrite}
                 onRename={(tag) => renameTag(s.tag, tag)}
               />
               <select
                 className="input max-w-[200px]"
                 value={s.release_tag}
+                disabled={!canWrite || !canReadReleases}
                 onChange={(e) => void retargetStage(s, e.target.value)}
               >
                 <option value="">No release</option>
@@ -222,6 +248,7 @@ export function ObjectOverviewPage({ kind }: Props) {
               <button
                 type="button"
                 className="btn-danger ml-auto shrink-0"
+                disabled={!canDelete}
                 onClick={() => setDeleteTarget({ tag: s.tag })}
               >
                 Delete
@@ -237,7 +264,6 @@ export function ObjectOverviewPage({ kind }: Props) {
         onClose={() => setDeleteTarget(null)}
         onConfirm={async () => {
           if (!deleteTarget) return;
-          setError(null);
           try {
             if (isRelease) {
               await api(`/releases/${deleteTarget.tag}`, { method: "DELETE" });
@@ -246,7 +272,7 @@ export function ObjectOverviewPage({ kind }: Props) {
             }
             reload();
           } catch (err) {
-            setError(String(err));
+            pushApiError(snackbar.error, err);
             throw err;
           }
         }}

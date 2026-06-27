@@ -78,13 +78,13 @@ export function QueryChunkCirclePack({ data }: { data: QueryChunkHit[] }) {
           onChange={(e) => setSearch(e.target.value)}
         />
         <button
-          className={`btn-secondary ${view === "chart" ? "ring-2 ring-[var(--accent)]" : ""}`}
+          className={`btn-secondary ${view === "chart" ? "btn-toggle-active" : ""}`}
           onClick={() => setView("chart")}
         >
           Chart
         </button>
         <button
-          className={`btn-secondary ${view === "list" ? "ring-2 ring-[var(--accent)]" : ""}`}
+          className={`btn-secondary ${view === "list" ? "btn-toggle-active" : ""}`}
           onClick={() => setView("list")}
         >
           List

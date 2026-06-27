@@ -3,20 +3,27 @@
 pub mod analytics;
 pub mod api_keys;
 pub mod auth;
+pub mod backups;
 pub mod batch;
 pub mod chunks;
 pub mod db_viewer;
 pub mod error;
 pub mod health;
+pub mod ingest_jobs;
+pub mod llm_credentials;
+pub mod llm_models;
 pub mod models;
 pub mod openapi;
 pub mod queries;
+pub mod reindex;
 pub mod releases;
 pub mod router;
 pub mod settings;
 pub mod sources;
 pub mod sources_list;
 pub mod stages;
+pub mod system_metrics;
 pub mod users;
+pub mod webhooks;
 
 pub use router::build_router;

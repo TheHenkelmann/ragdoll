@@ -8,7 +8,10 @@ use axum::Json;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{encode_session_token, validate_email, AuthContext};
+use crate::auth::{
+    encode_session_token, hash_password, validate_email, validate_password, AuthContext,
+    AuthPrincipal,
+};
 
 #[derive(Debug, serde::Deserialize)]
 pub struct LoginRequest {
@@ -28,6 +31,7 @@ pub struct AuthStatusResponse {
     pub email: String,
     pub is_superadmin: bool,
     pub password_is_default: bool,
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -84,7 +88,7 @@ pub async fn post_login(
             .map_err(|_| ApiError::unauthorized("invalid credentials"))?;
 
     let token = encode_session_token(
-        &state.config.jwt_secret,
+        &state.config.secret,
         &user_id,
         &body.email,
         is_superadmin,
@@ -112,11 +116,68 @@ pub async fn get_status(
         _ => return Err(ApiError::forbidden("session token required")),
     };
     let password_is_default = query_password_is_default(&state, &email).await?;
+    let mut permissions: Vec<String> = auth
+        .permissions
+        .iter()
+        .map(|p| p.as_str().to_string())
+        .collect();
+    permissions.sort();
     Ok(Json(AuthStatusResponse {
         email,
         is_superadmin,
         password_is_default,
+        permissions,
     }))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ChangePasswordResponse {
+    pub changed: bool,
+}
+
+pub async fn change_password(
+    State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
+    Json(body): Json<ChangePasswordRequest>,
+) -> Result<Json<ChangePasswordResponse>, ApiError> {
+    let email = match &auth.principal {
+        AuthPrincipal::Session {
+            email,
+            is_superadmin,
+            ..
+        } => {
+            if *is_superadmin {
+                return Err(ApiError::forbidden(
+                    "superadmin password cannot be changed via the UI; set RAGDOLL_SUPERADMIN_PW",
+                ));
+            }
+            email.clone()
+        }
+        _ => return Err(ApiError::forbidden("session token required")),
+    };
+    validate_password(&body.new_password).map_err(ApiError::bad_request)?;
+    crate::auth::authenticate_user(&state.pool, &email, &body.current_password)
+        .await
+        .map_err(|_| ApiError::unauthorized("invalid current password"))?;
+    let hash = hash_password(&body.new_password).map_err(|e| ApiError::internal(e.to_string()))?;
+    let conn = state
+        .pool
+        .connect_one()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    conn.execute(
+        "UPDATE users SET password_hash = ?1, password_is_default = 0 WHERE email = ?2",
+        (hash.as_str(), email.as_str()),
+    )
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?;
+    Ok(Json(ChangePasswordResponse { changed: true }))
 }
 
 async fn query_password_is_default(state: &AppState, email: &str) -> Result<bool, ApiError> {

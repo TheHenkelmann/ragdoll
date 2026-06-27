@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=../../_jwt_secret.sh
-source "${SCRIPT_DIR}/../../_jwt_secret.sh"
+# shellcheck source=../../_secret.sh
+source "${SCRIPT_DIR}/../../_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project)}"
 REGION="${REGION:-europe-west1}"
@@ -45,7 +45,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --cpu=2 \
   --memory=4Gi \
   --timeout=3600 \
-  --set-env-vars="RAGDOLL_DATA_DIR=/data,RAGDOLL_JWT_SECRET=${JWT_SECRET}" \
+  --set-env-vars="RAGDOLL_DATA_DIR=/data,RAGDOLL_SECRET=${SECRET}" \
   --add-volume=name=data,type=cloud-storage,bucket="${BUCKET}" \
   --add-volume-mount=volume=data,mount-path=/data
 

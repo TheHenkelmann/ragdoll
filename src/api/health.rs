@@ -12,13 +12,13 @@ use crate::api::router::AppState;
 pub struct HealthResponse {
     pub status: String,
     pub ready: bool,
-    pub embedding_model: String,
+    pub embedding_mismatch_count: usize,
 }
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: if state.ready { "ok" } else { "starting" }.to_string(),
         ready: state.ready,
-        embedding_model: state.config.embedding_model.clone(),
+        embedding_mismatch_count: state.embedding_mismatches.len(),
     })
 }

@@ -8,13 +8,13 @@ STACK_NAME="${STACK_NAME:-ragdoll-app-runner}"
 SOURCE_IMAGE="${SOURCE_IMAGE:-ghcr.io/thehenkelmann/ragdoll:latest}"
 TEMPLATE="${SCRIPT_DIR}/template.yaml"
 
-if [[ -n "${RAGDOLL_JWT_SECRET:-}" ]]; then
-  JWT_PARAM="JwtSecretOverride=${RAGDOLL_JWT_SECRET}"
-  echo "Using RAGDOLL_JWT_SECRET from environment."
+if [[ -n "${RAGDOLL_SECRET:-}" ]]; then
+  SECRET_PARAM="SecretOverride=${RAGDOLL_SECRET}"
+  echo "Using RAGDOLL_SECRET from environment."
 else
-  JWT_PARAM="JwtSecretOverride="
-  echo "CloudFormation will generate an ephemeral RAGDOLL_JWT_SECRET (not saved)." >&2
-  echo "Set export RAGDOLL_JWT_SECRET=<your-secret> before deploy to use your own value." >&2
+  SECRET_PARAM="SecretOverride="
+  echo "CloudFormation will generate an ephemeral RAGDOLL_SECRET (not saved)." >&2
+  echo "Set export RAGDOLL_SECRET=<your-secret> before deploy to use your own value." >&2
 fi
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
@@ -30,7 +30,7 @@ aws cloudformation deploy \
   --stack-name "${STACK_NAME}" \
   --template-file "${TEMPLATE}" \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides "${JWT_PARAM}" SourceImage="${SOURCE_IMAGE}"
+  --parameter-overrides "${SECRET_PARAM}" SourceImage="${SOURCE_IMAGE}"
 
 aws cloudformation describe-stacks \
   --region "${REGION}" \

@@ -3,8 +3,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=../../_jwt_secret.sh
-source "${SCRIPT_DIR}/../../_jwt_secret.sh"
+# shellcheck source=../../_secret.sh
+source "${SCRIPT_DIR}/../../_secret.sh"
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project)}"
 ZONE="${ZONE:-europe-west1-b}"
@@ -24,7 +24,7 @@ gcloud compute instances create-with-container "${INSTANCE_NAME}" \
   --boot-disk-size="${DISK_SIZE_GB}GB" \
   --container-image="${IMAGE}" \
   --container-restart-policy=always \
-  --container-env="RAGDOLL_DATA_DIR=/data,RAGDOLL_JWT_SECRET=${JWT_SECRET}" \
+  --container-env="RAGDOLL_DATA_DIR=/data,RAGDOLL_SECRET=${SECRET}" \
   --container-mount-host-path=mount-path=/data,host-path=/mnt/disks/ragdoll-data,mode=rw \
   --metadata=google-logging-enabled=true
 

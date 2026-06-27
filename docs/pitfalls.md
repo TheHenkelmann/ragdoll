@@ -19,6 +19,14 @@ entry links to the guide where it is explained in context.
 
 ## Auth and planes
 
+- **Query endpoints require an API key.** `/api/v1/releases/{tag}/queries` and
+  `/api/v1/stages/{tag}/queries` reject session tokens (UI login). Use an API key
+  with `queries:run` for production queries; use `/api/v1/playground/{tag}/queries`
+  with a session token for interactive debugging in the UI. → [querying.md](querying.md)
+- **API keys need the right permissions.** A key without `queries:run` returns
+  `403`. Grant only what each integration needs. → [concepts.md](concepts.md)
+- **Rate limits on API keys.** Optional `rpm` / `rph` per key; exceeding them
+  returns `429` with `Retry-After`. Common when batch-testing in a notebook.
 - **The stage plane (`/api/v1/stages/...`) only accepts API-key writes.** A
   session token (your UI login) will be rejected for writes. Use a session token
   on the release plane during development, and an API key for stage/production. →
@@ -42,23 +50,33 @@ These changes do **not** retroactively update existing chunks — you must
 re-ingest the affected sources:
 
 - **Changing the embedding model.** Old vectors live in the old model's space and
-  will not match new queries. Ragdoll never auto-reembeds. →
-  [operations.md → Models](operations.md#models)
+  will not match new queries. Ragdoll never auto-reembeds — trigger **reindex** or
+  re-ingest. → [models.md](models.md), [operations.md → Reindex](operations.md#reindex)
 - **Changing chunking settings** (`sentence_buffer`, `breakpoint_percentile`,
   `min/max_chunk_tokens`, etc.). Existing chunks are not re-split. →
   [chunking.md → Tuning](chunking.md#tuning)
 
 ## Operations
 
-- **Cloud deploy uses an auto-generated JWT secret by default.** One-click deploy
-  templates set a random `RAGDOLL_JWT_SECRET` that is **not saved or shown to you**.
-  Redeploying without overriding it invalidates existing tokens. Set
-  `RAGDOLL_JWT_SECRET` before deploy for production. →
-  [deploy/README.md](../deploy/README.md)
+- **Cloud deploy uses an auto-generated secret by default.** One-click deploy
+  templates set a random `RAGDOLL_SECRET` that is **not saved or shown to you**.
+  Redeploying without overriding it invalidates existing tokens **and** makes
+  stored LLM credentials undecryptable. Set `RAGDOLL_SECRET` before deploy for
+  production. → [deploy/README.md](../deploy/README.md)
+- **Rotating `RAGDOLL_SECRET` invalidates encrypted LLM credentials.** You must
+  re-enter provider API keys after a secret change. →
+  [configuration.md](configuration.md)
 - **Reset the DB after schema/seed changes.** After editing
   `migrations/0001_init.sql`, delete `${RAGDOLL_DATA_DIR}/db` and let migrations
   re-run, otherwise you get migration mismatches. →
   [operations.md → Local development](operations.md#local-development)
-- **Only dimension-1024 models are supported** (`BAAI/bge-m3`,
-  `BAAI/bge-reranker-v2-m3`). Other models are off the whitelist. →
-  [operations.md → Models](operations.md#models)
+- **Back up before risky changes.** Create a manual backup before changing the
+  embedding model, editing migrations, or bulk re-ingesting. Daily backups cover
+  routine protection; manual snapshots mark intentional save points. →
+  [operations.md → Backup & Restore](operations.md#backup--restore)
+- **Only dimension-1024 models are supported** (Option A whitelist). Embedding:
+  `BAAI/bge-m3`, `BAAI/bge-large-en-v1.5`, `mixedbread-ai/mxbai-embed-large-v1`,
+  `intfloat/multilingual-e5-large`. Rerank: `BAAI/bge-reranker-v2-m3`,
+  `jinaai/jina-reranker-v2-base-multilingual`, `mixedbread-ai/mxbai-rerank-base-v1`.
+  E5 models require query/passage prefixes (applied automatically). →
+  [models.md](models.md)

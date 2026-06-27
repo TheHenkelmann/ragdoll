@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use std::collections::HashSet;
+
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode};
@@ -11,7 +13,9 @@ use axum::response::Response;
 use crate::api::router::AppState;
 use crate::api::router::API_V1_PREFIX;
 use crate::auth::jwt::{AuthClaims, TokenKind};
+use crate::auth::permissions::{parse_permissions, parse_permissions_with_forced};
 use crate::auth::verify_token;
+use crate::crypto::normalize_bearer_token;
 
 #[derive(Debug, Clone)]
 pub enum AuthPrincipal {
@@ -29,6 +33,9 @@ pub enum AuthPrincipal {
 #[derive(Debug, Clone)]
 pub struct AuthContext {
     pub principal: AuthPrincipal,
+    pub permissions: HashSet<crate::auth::permissions::Permission>,
+    pub rpm: Option<u32>,
+    pub rph: Option<u32>,
 }
 
 impl AuthContext {
@@ -64,13 +71,21 @@ pub async fn auth_middleware(
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let claims =
-        verify_token(&state.config.jwt_secret, token).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = verify_token(&state.config.secret, normalize_bearer_token(token))
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
     let auth = resolve_principal(&state, &claims)
         .await
         .map_err(|err| principal_error_status(&err.to_string()))?;
 
     if is_stage_plane_write(&path, req.method()) && !auth.is_api_key() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    if is_query_plane(&path) && !auth.is_api_key() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    if is_playground_plane(&path) && auth.is_api_key() {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -110,6 +125,22 @@ fn is_stage_plane_write(path: &str, method: &Method) -> bool {
         .is_some_and(|rest| rest.contains('/'))
 }
 
+/// Query endpoints on release/stage planes require an API key.
+fn is_query_plane(path: &str) -> bool {
+    if let Some(rest) = path.strip_prefix("/api/v1/releases/") {
+        return rest.contains("/queries");
+    }
+    if let Some(rest) = path.strip_prefix("/api/v1/stages/") {
+        return rest.contains("/queries");
+    }
+    false
+}
+
+/// Playground endpoints require a session token (not an API key).
+fn is_playground_plane(path: &str) -> bool {
+    path.starts_with("/api/v1/playground/")
+}
+
 fn principal_error_status(message: &str) -> StatusCode {
     if message.contains("user not found") || message.contains("api key revoked") {
         StatusCode::UNAUTHORIZED
@@ -125,19 +156,34 @@ async fn resolve_principal(state: &AppState, claims: &AuthClaims) -> anyhow::Res
                 .email
                 .clone()
                 .ok_or_else(|| anyhow::anyhow!("session token missing email"))?;
+            let conn = state.pool.connect_one().await?;
+            let mut rows = conn
+                .query(
+                    "SELECT permissions FROM users WHERE id = ?1",
+                    [claims.sub.as_str()],
+                )
+                .await?;
+            let row = rows
+                .next()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("user not found"))?;
+            let perms_raw: String = row.get(0).unwrap_or_else(|_| "[]".to_string());
             Ok(AuthContext {
                 principal: AuthPrincipal::Session {
                     user_id: claims.sub.clone(),
                     email,
                     is_superadmin: claims.is_superadmin,
                 },
+                permissions: parse_permissions_with_forced(&perms_raw),
+                rpm: None,
+                rph: None,
             })
         }
         TokenKind::Apikey => {
             let conn = state.pool.connect_one().await?;
             let mut rows = conn
                 .query(
-                    "SELECT id, name FROM api_keys WHERE id = ?1",
+                    "SELECT id, name, permissions, rpm, rph FROM api_keys WHERE id = ?1",
                     [claims.sub.as_str()],
                 )
                 .await?;
@@ -145,11 +191,17 @@ async fn resolve_principal(state: &AppState, claims: &AuthClaims) -> anyhow::Res
                 .next()
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("api key revoked"))?;
+            let perms_raw: String = row.get(2).unwrap_or_else(|_| "[]".to_string());
+            let rpm: Option<i64> = row.get(3).ok();
+            let rph: Option<i64> = row.get(4).ok();
             Ok(AuthContext {
                 principal: AuthPrincipal::ApiKey {
                     key_id: row.get(0)?,
                     name: row.get(1)?,
                 },
+                permissions: parse_permissions(&perms_raw),
+                rpm: rpm.and_then(|v| u32::try_from(v).ok()),
+                rph: rph.and_then(|v| u32::try_from(v).ok()),
             })
         }
     }
@@ -229,6 +281,9 @@ mod tests {
                 email: "a@b.com".into(),
                 is_superadmin: true,
             },
+            permissions: HashSet::new(),
+            rpm: None,
+            rph: None,
         };
         assert!(session.is_superadmin());
         assert!(!session.is_api_key());
@@ -238,6 +293,9 @@ mod tests {
                 key_id: "k1".into(),
                 name: "prod".into(),
             },
+            permissions: HashSet::new(),
+            rpm: None,
+            rph: None,
         };
         assert!(!api.is_superadmin());
         assert!(api.is_api_key());

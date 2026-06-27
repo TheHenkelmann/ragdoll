@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { ReleaseRecord, api } from "../api/client";
+import { useSnackbar } from "../context/SnackbarContext";
+import { formatApiError } from "../utils/snackbarFormat";
 
 type Props = {
   open: boolean;
@@ -14,10 +16,10 @@ type Props = {
 };
 
 export function ReleaseModal({ open, onClose, releases, currentTag, tab, onChanged, onSelect }: Props) {
+  const snackbar = useSnackbar();
   const [search, setSearch] = useState("");
   const [tag, setTag] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ReleaseRecord[]>(releases);
 
@@ -26,7 +28,10 @@ export function ReleaseModal({ open, onClose, releases, currentTag, tab, onChang
     setLoading(true);
     void api<ReleaseRecord[]>("/releases")
       .then(setItems)
-      .catch((err) => setError(String(err)))
+      .catch((err) => {
+        const { title, body } = formatApiError(err);
+        snackbar.error(title, body || undefined);
+      })
       .finally(() => setLoading(false));
   }, [open]);
 
@@ -45,7 +50,6 @@ export function ReleaseModal({ open, onClose, releases, currentTag, tab, onChang
 
   async function createRelease(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     try {
       await api("/releases", {
         method: "POST",
@@ -59,18 +63,18 @@ export function ReleaseModal({ open, onClose, releases, currentTag, tab, onChang
       onSelect(tag);
       onClose();
     } catch (err) {
-      setError(String(err));
+      const { title, body } = formatApiError(err);
+      snackbar.error(title, body || undefined);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose}>
       <div className="card w-full max-w-lg space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-medium">Releases</h3>
           <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
         </div>
-        {error && <div className="text-sm text-red-400">{error}</div>}
         <input className="input" placeholder="Search releases" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="max-h-64 space-y-1 overflow-auto">
           {loading && <p className="text-sm text-[var(--muted)]">Loading…</p>}
@@ -79,7 +83,7 @@ export function ReleaseModal({ open, onClose, releases, currentTag, tab, onChang
             <button
               key={r.id}
               type="button"
-              className={`block w-full rounded-lg px-3 py-2 text-left hover:bg-black/10 ${r.tag === currentTag ? "ring-2 ring-[var(--accent)]" : ""}`}
+              className={`block w-full rounded-lg px-3 py-2 text-left hover:bg-[var(--selected)] ${r.tag === currentTag ? "btn-toggle-active" : ""}`}
               onClick={() => {
                 onSelect(r.tag);
                 onClose();

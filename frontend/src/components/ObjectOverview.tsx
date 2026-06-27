@@ -85,7 +85,7 @@ export function DeleteConfirmDialog({ open, typeLabel, tag, onClose, onConfirm }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-overlay"
       onClick={onClose}
     >
       <div
@@ -126,11 +126,13 @@ export function InlineTagInput({
   maxLength,
   onSubmit,
   onCancel,
+  validate,
 }: {
   initial?: string;
   maxLength: number;
   onSubmit: (tag: string) => Promise<void>;
   onCancel: () => void;
+  validate?: (tag: string) => string | null;
 }) {
   const [tag, setTag] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -141,9 +143,11 @@ export function InlineTagInput({
     inputRef.current?.select();
   }, []);
 
+  const trimmed = tag.trim();
+  const validationError = validate?.(trimmed) ?? null;
+
   async function submit() {
-    const trimmed = tag.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || validationError) return;
     setBusy(true);
     try {
       await onSubmit(trimmed);
@@ -153,38 +157,43 @@ export function InlineTagInput({
   }
 
   return (
-    <div className="create-input-wrap shrink-0">
-      <input
-        ref={inputRef}
-        className="input min-w-[160px]"
-        value={tag}
-        maxLength={maxLength}
-        placeholder="tag"
-        disabled={busy}
-        onChange={(e) => setTag(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") void submit();
-          if (e.key === "Escape") onCancel();
-        }}
-      />
-      <button
-        type="button"
-        className="icon-btn-submit"
-        disabled={!tag.trim() || busy}
-        aria-label="Confirm"
-        onClick={() => void submit()}
-      >
-        <EnterIcon />
-      </button>
-      <button
-        type="button"
-        className="icon-btn-submit"
-        disabled={busy}
-        aria-label="Cancel"
-        onClick={onCancel}
-      >
-        <EscBadge />
-      </button>
+    <div className="relative shrink-0">
+      <div className="create-input-wrap">
+        <input
+          ref={inputRef}
+          className="input min-w-[160px]"
+          value={tag}
+          maxLength={maxLength}
+          placeholder="tag"
+          disabled={busy}
+          onChange={(e) => setTag(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+            if (e.key === "Escape") onCancel();
+          }}
+        />
+        <button
+          type="button"
+          className="icon-btn-submit"
+          disabled={!trimmed || busy || !!validationError}
+          aria-label="Confirm"
+          onClick={() => void submit()}
+        >
+          <EnterIcon />
+        </button>
+        <button
+          type="button"
+          className="icon-btn-submit"
+          disabled={busy}
+          aria-label="Cancel"
+          onClick={onCancel}
+        >
+          <EscBadge />
+        </button>
+      </div>
+      {validationError && (
+        <p className="absolute left-0 top-full mt-0.5 text-xs text-error">{validationError}</p>
+      )}
     </div>
   );
 }
@@ -193,16 +202,25 @@ export function CreateTagControl({
   label,
   maxLength,
   onCreate,
+  validate,
+  disabled,
 }: {
   label: string;
   maxLength: number;
   onCreate: (tag: string) => Promise<void>;
+  validate?: (tag: string) => string | null;
+  disabled?: boolean;
 }) {
   const [creating, setCreating] = useState(false);
 
   if (!creating) {
     return (
-      <button type="button" className="btn-secondary shrink-0 !py-3" onClick={() => setCreating(true)}>
+      <button
+        type="button"
+        className="btn-primary shrink-0 !py-3"
+        disabled={disabled}
+        onClick={() => setCreating(true)}
+      >
         {label}
       </button>
     );
@@ -211,6 +229,7 @@ export function CreateTagControl({
   return (
     <InlineTagInput
       maxLength={maxLength}
+      validate={validate}
       onSubmit={async (tag) => {
         await onCreate(tag);
         setCreating(false);
@@ -224,16 +243,18 @@ export function ForkControl({
   sourceTag,
   maxLength,
   onFork,
+  disabled,
 }: {
   sourceTag: string;
   maxLength: number;
   onFork: (tag: string) => Promise<void>;
+  disabled?: boolean;
 }) {
   const [forking, setForking] = useState(false);
 
   if (!forking) {
     return (
-      <button type="button" className="btn-view" onClick={() => setForking(true)}>
+      <button type="button" className="btn-view" disabled={disabled} onClick={() => setForking(true)}>
         <ForkIcon />
         Fork
       </button>
@@ -258,11 +279,13 @@ export function EditableTag({
   maxLength,
   onRename,
   subtitle,
+  disabled,
 }: {
   tag: string;
   maxLength: number;
   onRename: (tag: string) => Promise<void>;
   subtitle?: ReactNode;
+  disabled?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -291,6 +314,7 @@ export function EditableTag({
           className="icon-btn shrink-0"
           aria-label="Edit tag"
           title="Edit tag"
+          disabled={disabled}
           onClick={() => setEditing(true)}
         >
           <PencilIcon />

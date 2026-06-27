@@ -54,7 +54,7 @@ def test_run_worker_processes_claimed_job(
     mock_db.claim_job.assert_called()
     mock_db.heartbeat.assert_called_once_with("job-loop-1", worker_config.worker_id)
     mock_process_job.assert_called_once()
-    mock_db.complete_job.assert_called_once_with("job-loop-1", "src-loop-1")
+    mock_db.complete_job.assert_called_once_with("job-loop-1")
     mock_db.release.assert_called()
 
 
@@ -126,7 +126,6 @@ def test_run_worker_fails_job_on_processing_error(
 
     mock_db.fail_job.assert_called_once_with(
         "job-fail-loop",
-        "src-fail-loop",
         "chunk failed",
         retry=True,
     )

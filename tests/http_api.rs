@@ -109,6 +109,7 @@ async fn stage_plane_write_forbidden_for_session_token() {
 async fn query_returns_matches_with_mock_embedder() {
     let app = setup_test_app().await;
     support::seed_demo_chunk(&app.state).await;
+    let token = app.create_api_key_token("query-test").await;
 
     let body = r#"[{"text":"local RAG pipeline","top_k":5,"rerank":false}]"#;
     let response = app
@@ -117,7 +118,7 @@ async fn query_returns_matches_with_mock_embedder() {
             Request::builder()
                 .method("POST")
                 .uri("/api/v1/releases/first-release/queries")
-                .header("authorization", format!("Bearer {}", app.token))
+                .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(body))
                 .unwrap(),
@@ -140,7 +141,7 @@ async fn health_returns_ready_payload() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["status"], "ok");
     assert_eq!(json["ready"], true);
-    assert!(json["embedding_model"].is_string());
+    assert!(json["embedding_mismatch_count"].is_number());
 }
 
 #[tokio::test]
@@ -212,6 +213,7 @@ async fn get_release_settings_returns_defaults() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["chunking_strategy"], "semantic_split");
     assert_eq!(json["embedding_model"], "BAAI/bge-m3");
+    assert_eq!(json["rerank_max_length"], 256);
 }
 
 #[tokio::test]

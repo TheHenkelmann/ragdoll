@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
-use crate::auth::{require_superadmin, AuthContext};
+use crate::auth::{authorize, AuthContext, Permission};
 
 #[derive(Debug, Serialize)]
 pub struct ReleaseRecord {
@@ -44,7 +44,9 @@ pub struct UpdateReleaseRequest {
 
 pub async fn list_releases(
     State(state): State<Arc<AppState>>,
+    Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<Vec<ReleaseRecord>>, ApiError> {
+    authorize(&auth, Permission::ReleasesRead)?;
     let conn = state
         .pool
         .connect_one()
@@ -95,7 +97,7 @@ pub async fn create_release(
     Extension(auth): Extension<AuthContext>,
     Json(body): Json<CreateReleaseRequest>,
 ) -> Result<Json<ReleaseRecord>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ReleasesWrite)?;
     validate_tag(&body.tag)?;
     let id = Uuid::new_v4().to_string();
     let conn = state
@@ -135,7 +137,7 @@ pub async fn rename_release(
     Path(tag): Path<String>,
     Json(body): Json<UpdateReleaseRequest>,
 ) -> Result<Json<ReleaseRecord>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ReleasesWrite)?;
     validate_tag(&body.tag)?;
     let conn = state
         .pool
@@ -202,7 +204,7 @@ pub async fn delete_release(
     Extension(auth): Extension<AuthContext>,
     Path(tag): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    require_superadmin(&auth)?;
+    authorize(&auth, Permission::ReleasesDelete)?;
     let conn = state
         .pool
         .connect_one()
@@ -341,9 +343,89 @@ async fn fork_release(
         .map_err(|e| ApiError::internal(e.to_string()))?;
     }
 
+    let mut credentials = conn
+        .query(
+            "SELECT id, name, provider, nonce, ciphertext, created_at, updated_at
+             FROM llm_credentials WHERE release_id = ?1",
+            [source_id.as_str()],
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    let mut credential_map = std::collections::HashMap::new();
+    while let Some(row) = credentials
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
+        let old_id: String = row.get(0).map_err(|e| ApiError::internal(e.to_string()))?;
+        let new_id = Uuid::new_v4().to_string();
+        credential_map.insert(old_id.clone(), new_id.clone());
+        conn.execute(
+            "INSERT INTO llm_credentials (id, release_id, name, provider, nonce, ciphertext, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            (
+                new_id.as_str(),
+                target_release_id,
+                row.get::<String>(1).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(2).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(3).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(4).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(5).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(6).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+            ),
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    }
+
+    let mut llm_models = conn
+        .query(
+            "SELECT id, tag, model_name, provider, endpoint, credential_id, created_at, updated_at
+             FROM llm_models WHERE release_id = ?1",
+            [source_id.as_str()],
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    while let Some(row) = llm_models
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
+        let old_credential_id: Option<String> = row.get(5).ok();
+        let new_credential_id = match old_credential_id.as_deref() {
+            None => None,
+            Some(old_cred) => Some(
+                credential_map
+                    .get(old_cred)
+                    .ok_or_else(|| ApiError::internal("missing credential mapping"))?
+                    .clone(),
+            ),
+        };
+        let new_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO llm_models (id, release_id, tag, model_name, provider, endpoint, credential_id, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            (
+                new_id.as_str(),
+                target_release_id,
+                row.get::<String>(1).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(2).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(3).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<Option<String>>(4).ok().flatten().as_deref(),
+                new_credential_id.as_deref(),
+                row.get::<String>(6).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(7).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+            ),
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    }
+
     let mut sources = conn
         .query(
-            "SELECT id, name, type, uri, content_hash, config, metadata, status, error, created_at, updated_at
+            "SELECT id, name, type, uri, content_hash, config, metadata, page_map, status, error, created_at, updated_at
              FROM sources WHERE release_id = ?1",
             [source_id.as_str()],
         )
@@ -360,8 +442,8 @@ async fn fork_release(
         let new_id = Uuid::new_v4().to_string();
         source_map.insert(old_id.clone(), new_id.clone());
         conn.execute(
-            "INSERT INTO sources (id, release_id, name, type, uri, content_hash, config, metadata, status, error, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO sources (id, release_id, name, type, uri, content_hash, config, metadata, page_map, status, error, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             (
                 new_id.as_str(),
                 target_release_id,
@@ -372,9 +454,11 @@ async fn fork_release(
                 row.get::<String>(5).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
                 row.get::<String>(6).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
                 row.get::<String>(7).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
-                row.get::<Option<String>>(8).ok().flatten().as_deref(),
+                row.get::<String>(8).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
                 row.get::<String>(9).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
-                row.get::<String>(10).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<Option<String>>(10).ok().flatten().as_deref(),
+                row.get::<String>(11).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
+                row.get::<String>(12).map_err(|e| ApiError::internal(e.to_string()))?.as_str(),
             ),
         )
         .await
@@ -415,6 +499,35 @@ async fn fork_release(
                 new_source.as_str(),
                 old_chunk_id.as_str(),
             ),
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    }
+
+    let mut texts = conn
+        .query(
+            "SELECT source_id, text, char_len FROM source_texts WHERE source_id IN (
+                SELECT id FROM sources WHERE release_id = ?1
+             )",
+            [source_id.as_str()],
+        )
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+
+    while let Some(row) = texts
+        .next()
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))?
+    {
+        let old_source_id: String = row.get(0).map_err(|e| ApiError::internal(e.to_string()))?;
+        let new_source_id = source_map
+            .get(&old_source_id)
+            .ok_or_else(|| ApiError::internal("missing source mapping for source_texts"))?;
+        let text: String = row.get(1).map_err(|e| ApiError::internal(e.to_string()))?;
+        let char_len: i64 = row.get(2).map_err(|e| ApiError::internal(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO source_texts (source_id, text, char_len) VALUES (?1, ?2, ?3)",
+            (new_source_id.as_str(), text.as_str(), char_len),
         )
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;

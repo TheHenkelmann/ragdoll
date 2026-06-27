@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -19,5 +20,22 @@ pub trait Reranker: Send + Sync {
 #[async_trait]
 pub trait ModelProvider: Send + Sync {
     async fn embedder(&self, model_name: &str) -> Result<Arc<dyn Embedder>>;
-    async fn reranker(&self, model_name: &str) -> Result<Arc<dyn Reranker>>;
+    async fn reranker(&self, model_name: &str, max_length: usize) -> Result<Arc<dyn Reranker>>;
+
+    /// Release in-memory model sessions that are not in `keep`. No-op for providers without a cache.
+    async fn evict_unreferenced(&self, keep: &HashSet<String>) -> (usize, usize) {
+        let _ = keep;
+        (0, 0)
+    }
+
+    /// Drop a single model from the in-memory cache. No-op for providers without a cache.
+    async fn purge_model(&self, name: &str) -> (usize, usize) {
+        let _ = name;
+        (0, 0)
+    }
+
+    /// Names of models currently held in memory. Empty for providers without a cache.
+    async fn list_loaded(&self) -> Vec<String> {
+        Vec::new()
+    }
 }

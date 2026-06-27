@@ -62,8 +62,8 @@ export function SourceCirclePack({ data }: { data: SourceChunkCount[] }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <input className="input max-w-xs" placeholder="Search sources" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button className={`btn-secondary ${view === "chart" ? "ring-2 ring-[var(--accent)]" : ""}`} onClick={() => setView("chart")}>Chart</button>
-        <button className={`btn-secondary ${view === "list" ? "ring-2 ring-[var(--accent)]" : ""}`} onClick={() => setView("list")}>List</button>
+        <button className={`btn-secondary ${view === "chart" ? "btn-toggle-active" : ""}`} onClick={() => setView("chart")}>Chart</button>
+        <button className={`btn-secondary ${view === "list" ? "btn-toggle-active" : ""}`} onClick={() => setView("list")}>List</button>
       </div>
       <div
         className="min-h-[1.25rem] text-sm text-[var(--muted)]"

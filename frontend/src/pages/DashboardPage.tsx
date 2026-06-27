@@ -2,15 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AnalyticsResponse, api } from "../api/client";
+import { Bar, BarChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { AnalyticsResponse, api, SystemMetricsResponse } from "../api/client";
 import { InfoTip } from "../components/InfoTip";
+import { PermissionDenied } from "../components/PermissionDenied";
 import { QueryChunkCirclePack } from "../components/QueryChunkCirclePack";
 import { SourceCirclePack } from "../components/SourceCirclePack";
-import { defaultStartDate, formatLatencyStats, todayDate } from "../utils/format";
+import { usePermissions } from "../hooks/usePermissions";
+import { PERM } from "../permissions";
+import { defaultStartDate, formatBytesGiB, formatLatencyStats, formatPercent, todayDate } from "../utils/format";
 
 const STATUS_GROUPS = ["2xx", "4xx", "5xx"] as const;
 const STATUS_COLORS = { s2xx: "#22c55e", s4xx: "#f59e0b", s5xx: "#ef4444" };
+const SYSTEM_METRICS_REFRESH_MS = 5_000;
 
 function SectionHeader({ title, info }: { title: string; info: string }) {
   return (
@@ -43,15 +47,18 @@ function todayDateState() {
 
 export function DashboardPage() {
   const { releaseTag, stageTag } = useParams();
+  const { can, ready } = usePermissions();
+  const canRead = can(PERM.analytics.read);
   const lens = stageTag ? "stage" : "release";
   const tag = stageTag ?? releaseTag ?? "";
   const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetricsResponse | null>(null);
   const [startDate, setStartDate] = useState(defaultStartDateState);
   const [endDate, setEndDate] = useState(todayDateState);
   const [statusFilter, setStatusFilter] = useState<string[]>([...STATUS_GROUPS]);
 
   useEffect(() => {
-    if (!tag) return;
+    if (!ready || !canRead || !tag) return;
     const qs = new URLSearchParams({ lens, tag, start: startDate, end: endDate });
     if (statusFilter.length > 0 && statusFilter.length < STATUS_GROUPS.length) {
       qs.set("status", statusFilter.join(","));
@@ -59,7 +66,24 @@ export function DashboardPage() {
     void api<AnalyticsResponse>(`/analytics?${qs}`)
       .then(setData)
       .catch(console.error);
-  }, [lens, tag, startDate, endDate, statusFilter]);
+  }, [ready, canRead, lens, tag, startDate, endDate, statusFilter]);
+
+  useEffect(() => {
+    if (!ready || !canRead || !tag) return;
+    const loadSystemMetrics = () => {
+      void api<SystemMetricsResponse>(`/system-metrics?start=${startDate}&end=${endDate}`)
+        .then(setSystemMetrics)
+        .catch(console.error);
+    };
+
+    loadSystemMetrics();
+    const interval = window.setInterval(loadSystemMetrics, SYSTEM_METRICS_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [ready, canRead, tag, startDate, endDate]);
+
+  if (ready && !canRead) {
+    return <PermissionDenied permission={PERM.analytics.read} />;
+  }
 
   const chartData = (data?.daily_requests ?? []).map((row) => ({
     day: row.day,
@@ -68,6 +92,17 @@ export function DashboardPage() {
     s5xx: statusFilter.includes("5xx") ? row.s5xx : 0,
   }));
   const hasRequests = (data?.request_count ?? 0) > 0;
+  const systemChartData = (systemMetrics?.samples ?? []).map((row) => ({
+    recorded_at: row.recorded_at.replace("T", " ").slice(0, 16),
+    cpu: row.cpu_percent,
+    memory_pct:
+      row.memory_total_bytes > 0 ? (row.memory_used_bytes / row.memory_total_bytes) * 100 : 0,
+  }));
+  const currentSystem = systemMetrics?.current;
+  const memoryUsedPct =
+    currentSystem && currentSystem.memory_total_bytes > 0
+      ? (currentSystem.memory_used_bytes / currentSystem.memory_total_bytes) * 100
+      : 0;
 
   function fmtLatency(stats?: { p50: number; p95: number }) {
     return formatLatencyStats(stats, hasRequests);
@@ -88,13 +123,13 @@ export function DashboardPage() {
         <KpiCard
           label="Requests"
           value={data?.request_count ?? 0}
-          info="Anzahl der POST /queries-Abfragen im gewählten Zeitraum (ohne Playground). Gefiltert nach HTTP-Status-Gruppen, sofern aktiv."
+          info="Count of POST /queries requests in the selected time range (excluding playground). Filtered by HTTP status groups when active."
         />
         <div className="card">
           <div className="flex items-center text-sm text-[var(--muted)]">
             Sources
             <InfoTip
-              text="Anzahl der Sources im aktuellen Release-Snapshot. Bei Stage-Lens: Daten des verknüpften Releases zum Zeitpunkt der Anzeige — Ingestion-Daten, keine Query-Ergebnisse."
+              text="Count of sources in the current release snapshot. In stage lens: data from the linked release at display time — ingestion data, not query results."
               wide
             />
           </div>
@@ -106,14 +141,14 @@ export function DashboardPage() {
         <KpiCard
           label="Chunks"
           value={data?.chunk_count ?? 0}
-          info="Gesamtzahl der Chunks im Release-Snapshot nach Ingestion. Nicht identisch mit query_chunks (Ergebnisse einzelner Abfragen)."
+          info="Total chunks in the release snapshot after ingestion. Not the same as query_chunks (results of individual queries)."
         />
       </section>
 
       <section className="card">
         <SectionHeader
           title="Query requests per day"
-          info="Tägliche Abfragen über POST /queries, aufgeteilt nach HTTP-Status der Batch-Antwort pro Item: 2xx (erfolgreich), 4xx (Client-Fehler), 5xx (Server-Fehler). Playground-Abfragen sind ausgeschlossen."
+          info="Daily POST /queries requests, split by HTTP status of the batch response per item: 2xx (success), 4xx (client error), 5xx (server error). Playground requests are excluded."
         />
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <label className="text-sm">
@@ -143,7 +178,7 @@ export function DashboardPage() {
                 <button
                   key={group}
                   type="button"
-                  className={`btn-secondary text-xs ${statusFilter.includes(group) ? "ring-2 ring-[var(--accent)]" : "opacity-50"}`}
+                  className={`btn-secondary text-xs ${statusFilter.includes(group) ? "btn-toggle-active" : "opacity-50"}`}
                   onClick={() => toggleStatus(group)}
                 >
                   {group}
@@ -186,7 +221,7 @@ export function DashboardPage() {
       <section className="card">
         <SectionHeader
           title="Query latency p50 / p95 (ms)"
-          info="Latenz der Such-Pipeline bei erfolgreichen Abfragen (HTTP 2xx) im gewählten Zeitraum. Betrifft Embed, Vektorsuche, Reranking und DB-Speicherung — nicht die Ingestion von Sources."
+          info="Search pipeline latency for successful queries (HTTP 2xx) in the selected time range. Covers embed, vector search, reranking, generation, and DB storage — not source ingestion."
         />
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {(
@@ -195,6 +230,7 @@ export function DashboardPage() {
               ["Embed", data?.embed_latency],
               ["Search", data?.search_latency],
               ["Rerank", data?.rerank_latency],
+              ["Generation", data?.generation_latency],
               ["Store", data?.store_latency],
             ] as const
           ).map(([label, stats]) => {
@@ -218,11 +254,109 @@ export function DashboardPage() {
         </div>
       </section>
 
+      <section className="card">
+        <SectionHeader
+          title="Host system utilization"
+          info="CPU and RAM usage of the entire machine Ragdoll runs on, sampled every second and stored locally. This is host-wide utilization — not scoped to this stage, release, or Ragdoll process alone."
+        />
+        <div className="mb-4 grid gap-4 md:grid-cols-3">
+          <div className="rounded-lg border p-4" style={{ borderColor: "var(--border)" }}>
+            <div className="text-sm text-[var(--muted)]">CPU now</div>
+            <div className="mt-2 text-2xl font-semibold tabular-nums">
+              {currentSystem ? formatPercent(currentSystem.cpu_percent, 1) : "–"}
+            </div>
+            <div className="mt-1 text-xs text-[var(--muted)]">
+              {currentSystem ? `${currentSystem.cpu_cores} cores available` : "Collecting…"}
+            </div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: "var(--border)" }}>
+            <div className="text-sm text-[var(--muted)]">RAM now</div>
+            <div className="mt-2 text-2xl font-semibold tabular-nums">
+              {currentSystem
+                ? `${formatBytesGiB(currentSystem.memory_used_bytes)} / ${formatBytesGiB(currentSystem.memory_total_bytes)}`
+                : "–"}
+            </div>
+            <div className="mt-1 text-xs text-[var(--muted)]">
+              {currentSystem ? `${formatPercent(memoryUsedPct, 1)} used` : "Collecting…"}
+            </div>
+          </div>
+          <div className="rounded-lg border p-4" style={{ borderColor: "var(--border)" }}>
+            <div className="text-sm text-[var(--muted)]">RAM available</div>
+            <div className="mt-2 text-2xl font-semibold tabular-nums">
+              {currentSystem ? formatBytesGiB(currentSystem.memory_available_bytes) : "–"}
+            </div>
+            <div className="mt-1 text-xs text-[var(--muted)]">Host-wide free memory</div>
+          </div>
+        </div>
+        <p className="mb-4 text-xs text-[var(--muted)]">
+          Overall system load on this host — includes the OS, other apps, and all Ragdoll stages/releases.
+        </p>
+        <div className="h-64">
+          {systemChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={systemChartData}>
+                <XAxis dataKey="recorded_at" stroke="var(--muted)" minTickGap={24} />
+                <YAxis
+                  yAxisId="cpu"
+                  stroke="var(--muted)"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <YAxis
+                  yAxisId="memory"
+                  orientation="right"
+                  stroke="var(--muted)"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text)",
+                    borderRadius: "8px",
+                  }}
+                  itemStyle={{ color: "var(--text)" }}
+                  labelStyle={{ color: "var(--muted)" }}
+                  formatter={(value, name) => [
+                    typeof value === "number" ? formatPercent(value, 1) : String(value),
+                    name === "cpu" ? "CPU" : "RAM",
+                  ]}
+                />
+                <Legend formatter={(value) => (value === "cpu" ? "CPU" : "RAM")} />
+                <Line
+                  yAxisId="cpu"
+                  type="monotone"
+                  dataKey="cpu"
+                  name="cpu"
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  yAxisId="memory"
+                  type="monotone"
+                  dataKey="memory_pct"
+                  name="memory_pct"
+                  stroke="#a855f7"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-[var(--muted)]">
+              System metrics appear after the server has been running for a few seconds.
+            </div>
+          )}
+        </div>
+      </section>
+
       {(data?.query_chunk_hits?.length ?? 0) > 0 && (
         <section className="card">
           <SectionHeader
             title="Query result chunks"
-            info="Häufigkeit der in Abfrageergebnissen zurückgegebenen Chunks (query_chunks), gefiltert nach dem gleichen Zeitraum und Status wie die Request-Statistik. Jeder Kreis ist ein Chunk; die Größe entspricht der Anzahl Abfragen, in denen er vorkam (max. einmal pro Abfrage)."
+            info="Frequency of chunks returned in query results (query_chunks), filtered by the same time range and status as the request stats. Each circle is a chunk; size reflects how many queries included it (at most once per query)."
           />
           <QueryChunkCirclePack data={data?.query_chunk_hits ?? []} />
         </section>
@@ -232,7 +366,7 @@ export function DashboardPage() {
         <section className="card">
           <SectionHeader
             title="Query chunk metadata key distribution"
-            info="Häufigkeit von Metadaten-Schlüsseln auf den in query_chunks gespeicherten Chunk-Metadaten — also Felder, die bei den tatsächlich zurückgegebenen Suchtreffern vorkommen. Unabhängig von sources.metadata."
+            info="Frequency of metadata keys on chunk metadata stored in query_chunks — fields present on actually returned search hits. Independent of sources.metadata."
           />
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
             {data?.query_chunk_metadata_keys.map(([key, count]) => (
@@ -252,7 +386,7 @@ export function DashboardPage() {
       <section className="card">
         <SectionHeader
           title="Chunks per source (ingestion)"
-          info="Verteilung der ingestierten Chunks pro Source im Release-Snapshot (Tabellen sources + chunks). Größe der Kreise entspricht der Chunk-Anzahl. Keine Query-Ergebnisse."
+          info="Distribution of ingested chunks per source in the release snapshot (sources + chunks tables). Circle size reflects chunk count. Not query results."
         />
         <SourceCirclePack data={data?.chunks_per_source ?? []} />
       </section>
@@ -261,7 +395,7 @@ export function DashboardPage() {
         <section className="card">
           <SectionHeader
             title="Source metadata key distribution (ingestion)"
-            info="Häufigkeit von Metadaten-Schlüsseln auf Source-Ebene (sources.metadata JSON). Zeigt, welche Custom-Felder beim Upload gesetzt wurden — nicht Chunk- oder Query-Metadaten."
+            info="Frequency of metadata keys at source level (sources.metadata JSON). Shows which custom fields were set at upload — not chunk or query metadata."
           />
           <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
             {data?.metadata_keys.map(([key, count]) => (

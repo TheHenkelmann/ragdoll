@@ -26,7 +26,7 @@ GATEWAY_LOG="$RUN_DIR/gateway.log"
 WORKER_LOG="$RUN_DIR/worker.log"
 
 export RAGDOLL_DATA_DIR="$DATA_DIR"
-export RAGDOLL_JWT_SECRET="${RAGDOLL_JWT_SECRET:-dev-local-jwt-secret-change-me}"
+export RAGDOLL_SECRET="${RAGDOLL_SECRET:-dev-local-secret-change-me}"
 export RAGDOLL_PORT="$PORT"
 export RAGDOLL_MIGRATIONS_DIR="$ROOT/migrations"
 export RAGDOLL_STATIC_DIR="$ROOT/frontend/dist"
@@ -109,10 +109,17 @@ ensure_frontend() {
   if [[ "${SKIP_FRONTEND:-}" == "1" ]]; then
     return 0
   fi
-  if [[ -f "$RAGDOLL_STATIC_DIR/index.html" ]]; then
-    return 0
+  local dist_index="$RAGDOLL_STATIC_DIR/index.html"
+  if [[ -f "$dist_index" ]]; then
+    local stale_src
+    stale_src="$(find "$ROOT/frontend/src" -type f -newer "$dist_index" -print -quit 2>/dev/null || true)"
+    if [[ -z "$stale_src" ]]; then
+      return 0
+    fi
+    echo "frontend sources changed since last build — rebuilding..."
+  else
+    echo "building frontend (first run)..."
   fi
-  echo "building frontend (first run)..."
   require_cmd npm
   (cd "$ROOT/frontend" && npm install && npm run build)
 }

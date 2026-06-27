@@ -1,49 +1,72 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api, ReleaseRecord, StageRecord } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { ThemeToggle } from "./ThemeToggle";
-import { UserMenu } from "./UserMenu";
+import { usePermissions } from "../hooks/usePermissions";
+import { PERM } from "../permissions";
+import { PrimaryRail } from "./PrimaryRail";
+import { SecondarySidebar } from "./SecondarySidebar";
 
 const RELEASE_KEY = "ragdoll_release";
+
+function isReleaseDetailPath(pathname: string): boolean {
+  const match = pathname.match(/^\/releases\/([^/]+)(?:\/(.*))?$/);
+  if (!match) return false;
+  const rest = match[2];
+  return rest === undefined || rest.length > 0;
+}
 
 export function Layout() {
   const { releaseTag = "", stageTag = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { status } = useAuth();
+  const { can, ready } = usePermissions();
   const [releases, setReleases] = useState<ReleaseRecord[]>([]);
   const [stages, setStages] = useState<StageRecord[]>([]);
   const [metaLoaded, setMetaLoaded] = useState(false);
 
-  const isOverview =
-    location.pathname === "/releases" || location.pathname === "/stages";
-  const isStageView = Boolean(stageTag);
+  const showSecondarySidebar = isReleaseDetailPath(location.pathname);
+  const canReadReleases = can(PERM.releases.read);
+  const canReadStages = can(PERM.stages.read);
 
-  const reloadMeta = () => {
-    void Promise.all([
-      api<ReleaseRecord[]>("/releases").then(setReleases),
-      api<StageRecord[]>("/stages").then(setStages),
-    ])
+  useEffect(() => {
+    if (!ready) return;
+
+    const fetches: Promise<void>[] = [];
+    if (canReadReleases) {
+      fetches.push(api<ReleaseRecord[]>("/releases").then(setReleases));
+    } else {
+      setReleases([]);
+    }
+    if (canReadStages) {
+      fetches.push(api<StageRecord[]>("/stages").then(setStages));
+    } else {
+      setStages([]);
+    }
+
+    if (fetches.length === 0) {
+      setMetaLoaded(true);
+      return;
+    }
+
+    void Promise.all(fetches)
       .catch(console.error)
       .finally(() => setMetaLoaded(true));
-  };
+  }, [location.pathname, ready, canReadReleases, canReadStages]);
 
   useEffect(() => {
-    reloadMeta();
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (isOverview || releaseTag) return;
+    if (!ready || !canReadReleases) return;
+    if (releaseTag || stageTag || location.pathname !== "/") return;
     const saved = localStorage.getItem(RELEASE_KEY);
     const target =
       saved && releases.some((r) => r.tag === saved) ? saved : releases[0]?.tag;
-    if (target && location.pathname === "/") {
-      navigate(`/releases/${target}/dashboard`, { replace: true });
+    if (target) {
+      navigate(`/releases/${target}`, { replace: true });
     }
-  }, [releaseTag, releases, navigate, isOverview, location.pathname]);
+  }, [ready, canReadReleases, releaseTag, stageTag, releases, navigate, location.pathname]);
 
   useEffect(() => {
     if (releaseTag) localStorage.setItem(RELEASE_KEY, releaseTag);
@@ -51,96 +74,21 @@ export function Layout() {
 
   const currentRelease = releases.find((r) => r.tag === releaseTag);
   const currentStage = stages.find((s) => s.tag === stageTag);
-  const linkedStages = stages.filter((s) => s.release_tag === releaseTag);
   const unknownRelease = Boolean(releaseTag) && metaLoaded && !currentRelease;
   const unknownStage = Boolean(stageTag) && metaLoaded && !currentStage;
 
-  const nav = (path: string) =>
-    path === "dashboard" ? `/releases/${releaseTag}` : `/releases/${releaseTag}/${path}`;
-
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       {status?.password_is_default && (
         <div className="banner-warning">
-          Default admin password active. Set environment variable RAGDOLL_SUPERADMIN_PW and restart the container.
+          Default admin password active. Set environment variable RAGDOLL_SUPERADMIN_PW and restart
+          the container.
         </div>
       )}
-      <header
-        className="flex items-center justify-between border-b px-6 py-4"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div className="flex items-center gap-3 text-sm">
-          <div className="flex items-center gap-2">
-            <img src="/assets/logo.png" alt="" className="h-8 w-auto" aria-hidden />
-            <span className="text-lg font-semibold">Ragdoll</span>
-          </div>
-          <span className="text-[var(--muted)]">›</span>
-          <button
-            type="button"
-            className="breadcrumb-link"
-            onClick={() => navigate("/stages")}
-          >
-            {stageTag ? stageTag : "Stages"}
-          </button>
-          <span className="text-[var(--muted)]">·</span>
-          <button
-            type="button"
-            className="breadcrumb-link"
-            onClick={() => {
-              if (stageTag && currentStage?.release_tag) {
-                navigate(`/releases/${currentStage.release_tag}`);
-                return;
-              }
-              navigate("/releases");
-            }}
-          >
-            {releaseTag && !isOverview ? (
-              <>
-                {currentRelease?.tag ?? releaseTag}
-                {linkedStages.length > 0 && (
-                  <span className="text-[var(--muted)]">
-                    {" "}
-                    ({linkedStages.map((s) => s.tag).join(", ")})
-                  </span>
-                )}
-              </>
-            ) : stageTag && currentStage ? (
-              currentStage.release_tag || "No release"
-            ) : (
-              "Releases"
-            )}
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <UserMenu />
-        </div>
-      </header>
-
-      <div className="flex">
-        {!isOverview && !isStageView && (
-          <aside className="w-56 border-r p-4" style={{ borderColor: "var(--border)" }}>
-            <nav className="space-y-1">
-              {[
-                ["dashboard", "Dashboard"],
-                ["playground", "Playground"],
-                ["sources", "Sources"],
-                ["database", "Database"],
-                ["settings", "Settings"],
-              ].map(([path, label]) => (
-                <NavLink
-                  key={path}
-                  to={nav(path)}
-                  end={path === "dashboard"}
-                  className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-                >
-                  {label}
-                </NavLink>
-              ))}
-            </nav>
-          </aside>
-        )}
-        <main className="min-w-0 flex-1 p-8">
+      <div className="flex min-h-0 flex-1">
+        <PrimaryRail />
+        {showSecondarySidebar && releaseTag && <SecondarySidebar releaseTag={releaseTag} />}
+        <main className="min-w-0 flex-1 overflow-auto p-8">
           {unknownRelease ? (
             <div className="card">
               <h2 className="text-xl font-semibold">Release not found</h2>

@@ -4,8 +4,8 @@ from ragdoll_worker.chunk.sentences import split_sentences
 
 
 def test_split_sentences_tracks_offsets() -> None:
-    text = "Erster Satz. Zweiter Satz."
-    spans = split_sentences(text, language="de")
+    text = "First sentence. Second sentence."
+    spans = split_sentences(text, language="en")
     assert len(spans) >= 2
     assert spans[0].text in text
     assert text[spans[0].start : spans[0].end] == spans[0].text

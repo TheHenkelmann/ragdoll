@@ -6,11 +6,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::config::Config;
 use crate::db::{DbError, DbPool};
 
 pub const DEFAULT_TOP_K: u32 = 10;
-pub const DEFAULT_RERANK_CANDIDATES: u32 = 50;
+pub const DEFAULT_RERANK_CANDIDATES: u32 = 20;
 pub const DEFAULT_MIN_SCORE: f32 = 0.0;
+pub const DEFAULT_MIN_SEMANTIC_SCORE: f64 = 0.5;
+pub const DEFAULT_MIN_RERANK_SCORE: f64 = 0.5;
+pub const DEFAULT_RERANK_MAX_LENGTH: u32 = 256;
+pub const RERANK_MAX_LENGTH_UNCAPPED: usize = 8192;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -20,6 +25,20 @@ pub enum PayloadStorage {
     PerRequest,
     Forced,
     Forbidden,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DedupPolicy {
+    Skip,
+    Reject,
+    Replace,
+}
+
+impl Default for DedupPolicy {
+    fn default() -> Self {
+        Self::Replace
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -34,6 +53,9 @@ pub struct RuntimeSettings {
     pub max_chunk_tokens: u32,
     pub max_upload_size: u64,
     pub max_batch_size: u32,
+    pub generation_allowed: bool,
+    pub rerank_max_length: u32,
+    pub dedup_policy: DedupPolicy,
 }
 
 impl Default for RuntimeSettings {
@@ -49,6 +71,9 @@ impl Default for RuntimeSettings {
             max_chunk_tokens: 512,
             max_upload_size: 52_428_800,
             max_batch_size: 100,
+            generation_allowed: true,
+            rerank_max_length: DEFAULT_RERANK_MAX_LENGTH,
+            dedup_policy: DedupPolicy::Replace,
         }
     }
 }
@@ -73,6 +98,10 @@ impl SettingsCache {
 
     pub async fn invalidate(&self, release_id: &str) {
         self.inner.write().await.remove(release_id);
+    }
+
+    pub async fn clear_all(&self) {
+        self.inner.write().await.clear();
     }
 
     pub async fn get_or_load(
@@ -130,13 +159,38 @@ fn apply_setting(settings: &mut RuntimeSettings, key: &str, raw: &str) -> Result
         "max_chunk_tokens" => settings.max_chunk_tokens = parse_u32(value)?,
         "max_upload_size" => settings.max_upload_size = parse_u64(value)?,
         "max_batch_size" => settings.max_batch_size = parse_u32(value)?,
+        "generation_allowed" => settings.generation_allowed = parse_bool(value)?,
+        "rerank_max_length" => settings.rerank_max_length = parse_rerank_max_length(value)?,
+        "dedup_policy" => {
+            settings.dedup_policy = match parse_string(value)?.as_str() {
+                "reject" => DedupPolicy::Reject,
+                "replace" => DedupPolicy::Replace,
+                _ => DedupPolicy::Skip,
+            }
+        }
         _ => {}
     }
     Ok(())
 }
 
+fn parse_rerank_max_length(value: Value) -> Result<u32, DbError> {
+    let raw = parse_u32(value)?;
+    match raw {
+        0 | 128 | 256 | 512 | 1024 => Ok(raw),
+        _ => Ok(DEFAULT_RERANK_MAX_LENGTH),
+    }
+}
+
+pub fn effective_rerank_max_length(settings: &RuntimeSettings) -> usize {
+    match settings.rerank_max_length {
+        0 => RERANK_MAX_LENGTH_UNCAPPED,
+        n => n as usize,
+    }
+}
+
 pub async fn patch_settings(
     pool: &DbPool,
+    config: &Config,
     release_id: &str,
     updates: &serde_json::Map<String, Value>,
 ) -> Result<RuntimeSettings, DbError> {
@@ -151,7 +205,53 @@ pub async fn patch_settings(
         )
         .await?;
     }
-    load_settings(pool, release_id).await
+    let settings = load_settings(pool, release_id).await?;
+    let require_models_present = updates.contains_key("embedding_model")
+        || updates.contains_key("rerank_model");
+    validate_runtime_settings(&settings, config, require_models_present)?;
+    Ok(settings)
+}
+
+pub fn validate_runtime_settings(
+    settings: &RuntimeSettings,
+    config: &Config,
+    require_models_present: bool,
+) -> Result<(), DbError> {
+    use crate::models::bootstrap::model_is_complete;
+    use crate::models::mapping::{is_supported_embed_model, is_supported_rerank_model};
+
+    if !is_supported_embed_model(&settings.embedding_model) {
+        return Err(DbError::InvalidInput(format!(
+            "unsupported embedding_model: {}",
+            settings.embedding_model
+        )));
+    }
+    if !is_supported_rerank_model(&settings.rerank_model) {
+        return Err(DbError::InvalidInput(format!(
+            "unsupported rerank_model: {}",
+            settings.rerank_model
+        )));
+    }
+
+    if !require_models_present {
+        return Ok(());
+    }
+
+    let embed_dir = config.model_dir_for(&settings.embedding_model);
+    if !model_is_complete(&embed_dir) {
+        return Err(DbError::InvalidInput(format!(
+            "embedding model {} is not downloaded; download it from the Models page first",
+            settings.embedding_model
+        )));
+    }
+    let rerank_dir = config.model_dir_for(&settings.rerank_model);
+    if !model_is_complete(&rerank_dir) {
+        return Err(DbError::InvalidInput(format!(
+            "rerank model {} is not downloaded; download it from the Models page first",
+            settings.rerank_model
+        )));
+    }
+    Ok(())
 }
 
 fn parse_string(value: Value) -> Result<String, DbError> {
@@ -172,6 +272,19 @@ fn parse_u32(value: Value) -> Result<u32, DbError> {
             .parse()
             .map_err(|_| DbError::InvalidInput(format!("invalid u32: {s}"))),
         _ => Err(DbError::InvalidInput("invalid u32".into())),
+    }
+}
+
+fn parse_bool(value: Value) -> Result<bool, DbError> {
+    match value {
+        Value::Bool(b) => Ok(b),
+        Value::String(s) => match s.to_lowercase().as_str() {
+            "true" | "1" | "yes" => Ok(true),
+            "false" | "0" | "no" => Ok(false),
+            other => Err(DbError::InvalidInput(format!("invalid bool: {other}"))),
+        },
+        Value::Number(n) => Ok(n.as_i64().unwrap_or(0) != 0),
+        _ => Err(DbError::InvalidInput("invalid bool".into())),
     }
 }
 
@@ -206,6 +319,16 @@ pub fn effective_store_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn validate_requires_downloaded_models() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config::for_test(dir.path().to_path_buf(), "secret");
+        let settings = RuntimeSettings::default();
+        assert!(validate_runtime_settings(&settings, &config, true).is_err());
+        assert!(validate_runtime_settings(&settings, &config, false).is_ok());
+    }
 
     #[test]
     fn effective_store_payload_respects_policy() {
@@ -228,5 +351,20 @@ mod tests {
         };
         assert!(effective_store_payload(&settings, true, false));
         assert!(!effective_store_payload(&settings, false, false));
+    }
+
+    #[test]
+    fn effective_rerank_max_length_maps_zero_to_uncapped() {
+        let settings = RuntimeSettings {
+            rerank_max_length: 0,
+            ..RuntimeSettings::default()
+        };
+        assert_eq!(
+            effective_rerank_max_length(&settings),
+            RERANK_MAX_LENGTH_UNCAPPED
+        );
+
+        let settings = RuntimeSettings::default();
+        assert_eq!(effective_rerank_max_length(&settings), 256);
     }
 }

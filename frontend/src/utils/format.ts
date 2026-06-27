@@ -19,3 +19,11 @@ export function formatLatencyStats(
   }
   return { p50: String(Math.round(stats.p50)), p95: String(Math.round(stats.p95)) };
 }
+
+export function formatBytesGiB(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+export function formatPercent(value: number, digits = 0): string {
+  return `${value.toFixed(digits)}%`;
+}
