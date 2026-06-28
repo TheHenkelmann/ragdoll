@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { FilterBuilder } from "../components/FilterBuilder";
 import { InfoTip } from "../components/InfoTip";
 import { PermissionDenied } from "../components/PermissionDenied";
+import { Toggle } from "../components/Toggle";
 import { usePermissions } from "../hooks/usePermissions";
 import { PERM } from "../permissions";
 import {
@@ -517,6 +518,8 @@ export function PlaygroundPage() {
   const [text, setText] = useState(params.get("q") ?? "");
   const [topK, setTopK] = useState(Number(params.get("top_k") ?? 10));
   const [rerank, setRerank] = useState(params.get("rerank") !== "false");
+  const [hybrid, setHybrid] = useState(params.get("hybrid") === "true");
+  const [bm25Weight, setBm25Weight] = useState(params.get("bm25_weight") ?? "1.0");
   const [rerankCandidates, setRerankCandidates] = useState(Number(params.get("rerank_candidates") ?? 20));
   const [minSemanticScore, setMinSemanticScore] = useState(params.get("min_semantic_score") ?? "0.5");
   const [minRerankScore, setMinRerankScore] = useState(params.get("min_rerank_score") ?? "0.5");
@@ -610,6 +613,7 @@ export function PlaygroundPage() {
 
   const minSemantic = parseScore(minSemanticScore);
   const minRerank = parseScore(minRerankScore);
+  const bm25WeightValue = parseOptionalNumber(bm25Weight) ?? 1.0;
 
   const parsedFilter = (() => {
     if (!filter.trim()) return undefined;
@@ -629,11 +633,23 @@ export function PlaygroundPage() {
         rerank_candidates: rerankCandidates,
         min_semantic_score: minSemantic,
         min_rerank_score: minRerank,
+        ...(hybrid ? { hybrid: true, bm25_weight: bm25WeightValue } : {}),
         ...(parsedFilter !== undefined ? { filter: parsedFilter } : {}),
         ...(generation ? { generation } : {}),
       },
     ],
-    [text, topK, rerank, rerankCandidates, minSemantic, minRerank, parsedFilter, generation],
+    [
+      text,
+      topK,
+      rerank,
+      rerankCandidates,
+      minSemantic,
+      minRerank,
+      hybrid,
+      bm25WeightValue,
+      parsedFilter,
+      generation,
+    ],
   );
 
   const baseUrl = window.location.origin;
@@ -651,6 +667,10 @@ export function PlaygroundPage() {
     next.set("rerank_candidates", String(rerankCandidates));
     next.set("min_semantic_score", minSemanticScore);
     next.set("min_rerank_score", minRerankScore);
+    if (hybrid) {
+      next.set("hybrid", "true");
+      next.set("bm25_weight", bm25Weight);
+    }
     if (filter) next.set("filter", filter);
     if (generateEnabled) {
       next.set("generate", "true");
@@ -668,6 +688,8 @@ export function PlaygroundPage() {
     rerankCandidates,
     minSemanticScore,
     minRerankScore,
+    hybrid,
+    bm25Weight,
     filter,
     generateEnabled,
     streamEnabled,
@@ -801,16 +823,61 @@ export function PlaygroundPage() {
 
         {tab === "ui" ? (
           <div className="space-y-8">
-            <label className="block space-y-1 text-sm">
-              <span className="font-medium">Query</span>
-              <textarea
-                className="input min-h-28"
-                style={queryMissing ? ERROR_BORDER : undefined}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Query text"
-              />
-            </label>
+            <div className="space-y-3">
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Query</span>
+                <textarea
+                  className="input min-h-28"
+                  style={queryMissing ? ERROR_BORDER : undefined}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Query text"
+                />
+              </label>
+
+              <div
+                className="rounded-lg border p-4"
+                style={{
+                  borderColor: hybrid ? "var(--accent)" : "var(--border)",
+                  background: hybrid
+                    ? "color-mix(in srgb, var(--accent) 8%, var(--surface))"
+                    : "var(--surface)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center text-sm font-medium">
+                      Hybrid search
+                      <InfoTip
+                        wide
+                        text="Fuse cosine vector search with BM25 keyword ranking via reciprocal rank fusion. Helps when the query contains rare keywords, SKUs, or exact phrases that pure embedding search may miss."
+                      />
+                    </span>
+                    <p className="text-sm text-[var(--muted)]">
+                      Combine semantic (cosine) and keyword (BM25) ranking in a single search.
+                    </p>
+                  </div>
+                  <Toggle checked={hybrid} onChange={setHybrid} label="" />
+                </div>
+                {hybrid && (
+                  <label className="mt-4 block max-w-xs space-y-1 text-sm">
+                    <span className="inline-flex items-center">
+                      bm25_weight
+                      <InfoTip text="Relative weight of the BM25 keyword ranking in the fusion. 0 = vector-only, 1 = equal weight with the vector ranking." />
+                    </span>
+                    <input
+                      className="input"
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={bm25Weight}
+                      onChange={(e) => setBm25Weight(e.target.value)}
+                      placeholder="1.0"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
 
             <section className="space-y-3">
               <div>
@@ -839,16 +906,19 @@ export function PlaygroundPage() {
                   </span>
                   <input className="input" type="number" value={topK} onChange={(e) => setTopK(Number(e.target.value))} />
                 </label>
-                <label className="space-y-1 text-sm">
+                <div className="space-y-1 text-sm">
                   <span className="inline-flex items-center">
                     rerank
                     <InfoTip text="Enables the cross-encoder reranker." />
                   </span>
-                  <select className="input" value={rerank ? "true" : "false"} onChange={(e) => setRerank(e.target.value === "true")}>
-                    <option value="true">Enabled</option>
-                    <option value="false">Disabled</option>
-                  </select>
-                </label>
+                  <div className="flex min-h-[50px] items-center">
+                    <Toggle
+                      checked={rerank}
+                      onChange={setRerank}
+                      label={rerank ? "Enabled" : "Disabled"}
+                    />
+                  </div>
+                </div>
                 <label className="space-y-1 text-sm">
                   <span className="inline-flex items-center">
                     rerank_candidates
@@ -896,13 +966,16 @@ export function PlaygroundPage() {
                 </p>
               </div>
               <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-                <label className="space-y-1 text-sm">
+                <div className="space-y-1 text-sm">
                   <span className="inline-flex items-center">generate</span>
-                  <select className="input" value={generateEnabled ? "true" : "false"} onChange={(e) => void handleGenerateChange(e.target.value === "true")}>
-                    <option value="false">Off</option>
-                    <option value="true">On</option>
-                  </select>
-                </label>
+                  <div className="flex min-h-[50px] items-center">
+                    <Toggle
+                      checked={generateEnabled}
+                      onChange={(enabled) => void handleGenerateChange(enabled)}
+                      label={generateEnabled ? "On" : "Off"}
+                    />
+                  </div>
+                </div>
                 {generateEnabled && (
                   <>
                     <label className="space-y-1 text-sm">

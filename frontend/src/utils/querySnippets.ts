@@ -7,6 +7,8 @@ type QueryBodyItem = {
   rerank_candidates: number;
   min_semantic_score: number;
   min_rerank_score: number;
+  hybrid?: boolean;
+  bm25_weight?: number;
   filter?: unknown;
 };
 

@@ -111,7 +111,7 @@ describe("PlaygroundPage", () => {
       { route: "/releases/v1/playground" },
     );
 
-    fireEvent.change(screen.getByDisplayValue("Off"), { target: { value: "true" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Off" }));
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "openai-gpt" })).toBeInTheDocument();

@@ -65,8 +65,8 @@ contain rare keywords, SKUs, or exact phrases that pure embedding search may mis
 | `hybrid` | `false` | Enable hybrid retrieval |
 | `bm25_weight` | `1.0` | Relative weight of the BM25 ranking (0 = vector-only) |
 
-Hybrid runs before reranking. The Playground UI does not expose this knob yet;
-use the API directly.
+Hybrid runs before reranking. The Playground UI exposes a **Hybrid search**
+toggle directly under the query field, including the `bm25_weight` control.
 
 ### Citations
 
