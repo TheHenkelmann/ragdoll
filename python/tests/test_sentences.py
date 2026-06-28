@@ -19,3 +19,19 @@ def test_split_sentences_offsets_are_monotonic() -> None:
         assert text[span.start : span.end] == span.text
     for i in range(1, len(spans)):
         assert spans[i].start >= spans[i - 1].start
+
+
+def test_split_sentences_falls_back_when_segment_not_found_at_cursor() -> None:
+    from unittest.mock import MagicMock, patch
+
+    text = "Hello world. Next bit."
+    with patch("ragdoll_worker.chunk.sentences.pysbd.Segmenter") as mock_segmenter_cls:
+        segmenter = MagicMock()
+        segmenter.segment.return_value = ["  padded sentence  ", "Next bit."]
+        mock_segmenter_cls.return_value = segmenter
+
+        spans = split_sentences(text, language="en")
+
+    assert spans
+    assert spans[0].text == "padded sentence"
+    assert spans[0].text in text or spans[0].start >= 0

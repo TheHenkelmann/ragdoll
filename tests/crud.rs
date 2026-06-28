@@ -391,3 +391,43 @@ async fn unknown_release_returns_not_found() {
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn backup_create_list_and_delete() {
+    let app = setup_test_app().await;
+
+    let (status, list) =
+        json_request(&app, "GET", "/api/v1/backups", None, Some(&app.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list["backups"].is_array());
+
+    let (status, created) =
+        json_request(&app, "POST", "/api/v1/backups", None, Some(&app.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    let file_name = created["file_name"].as_str().unwrap();
+    assert!(file_name.starts_with("ragdoll-"));
+    assert!(file_name.ends_with("-manual.db"));
+
+    let (status, list_after) =
+        json_request(&app, "GET", "/api/v1/backups", None, Some(&app.token)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        list_after["backups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["file_name"] == file_name)
+    );
+
+    let (status, deleted) = json_request(
+        &app,
+        "DELETE",
+        "/api/v1/backups/delete",
+        Some(format!(r#"{{"file_name":"{file_name}"}}"#)),
+        Some(&app.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(deleted["deleted"], true);
+    assert_eq!(deleted["file_name"], file_name);
+}

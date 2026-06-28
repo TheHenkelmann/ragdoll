@@ -34,27 +34,9 @@ impl ModelRegistry {
         {
             let map = self.embedders.lock().await;
             if let Some(model) = map.get(model_name) {
-                // #region agent log
-                dbg_log(
-                    "A",
-                    "registry.rs:embedder",
-                    "cache hit (lock released immediately)",
-                    serde_json::json!({"model": model_name}),
-                );
-                // #endregion
                 return Ok(model.clone());
             }
         }
-        // #region agent log
-        let _t0 = std::time::Instant::now();
-        let _inflight = LOADS_INFLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        dbg_log(
-            "F",
-            "registry.rs:embedder",
-            "loading EmbedModel in spawn_blocking (lock NOT held)",
-            serde_json::json!({"model": model_name, "inflight_loads": _inflight, "thread": format!("{:?}", std::thread::current().id())}),
-        );
-        // #endregion
         let config = self.config.clone();
         let name = model_name.to_string();
         let model: Arc<dyn Embedder> = tokio::task::spawn_blocking(move || {
@@ -62,15 +44,6 @@ impl ModelRegistry {
         })
         .await
         .context("embedder load task panicked")??;
-        // #region agent log
-        LOADS_INFLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        dbg_log(
-            "F",
-            "registry.rs:embedder",
-            "EmbedModel load finished (lock acquired only now to insert)",
-            serde_json::json!({"model": model_name, "load_ms": _t0.elapsed().as_millis() as u64, "thread": format!("{:?}", std::thread::current().id())}),
-        );
-        // #endregion
         let mut map = self.embedders.lock().await;
         let stored = map
             .entry(model_name.to_string())
@@ -86,16 +59,6 @@ impl ModelRegistry {
                 return Ok(model.clone());
             }
         }
-        // #region agent log
-        let _t0 = std::time::Instant::now();
-        let _inflight = LOADS_INFLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-        dbg_log(
-            "F",
-            "registry.rs:reranker",
-            "loading RerankModel in spawn_blocking (lock NOT held)",
-            serde_json::json!({"model": model_name, "inflight_loads": _inflight, "thread": format!("{:?}", std::thread::current().id())}),
-        );
-        // #endregion
         let config = self.config.clone();
         let name = model_name.to_string();
         let model: Arc<dyn Reranker> = tokio::task::spawn_blocking(move || {
@@ -105,15 +68,6 @@ impl ModelRegistry {
         })
         .await
         .context("reranker load task panicked")??;
-        // #region agent log
-        LOADS_INFLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        dbg_log(
-            "F",
-            "registry.rs:reranker",
-            "RerankModel load finished (lock acquired only now to insert)",
-            serde_json::json!({"model": model_name, "load_ms": _t0.elapsed().as_millis() as u64}),
-        );
-        // #endregion
         let mut map = self.rerankers.lock().await;
         let stored = map.entry(key).or_insert_with(|| model.clone());
         Ok(stored.clone())
@@ -136,23 +90,7 @@ impl ModelRegistry {
 
     /// Drop a single model from the in-memory cache (disk artifacts are untouched).
     pub async fn purge_model(&self, name: &str) -> (usize, usize) {
-        // #region agent log
-        dbg_log(
-            "A",
-            "registry.rs:purge_model",
-            "waiting for embedders lock (unload/delete clicked)",
-            serde_json::json!({"model": name, "thread": format!("{:?}", std::thread::current().id())}),
-        );
-        // #endregion
         let mut embedders = self.embedders.lock().await;
-        // #region agent log
-        dbg_log(
-            "A",
-            "registry.rs:purge_model",
-            "embedders lock acquired (unload/delete proceeding)",
-            serde_json::json!({"model": name}),
-        );
-        // #endregion
         let embed_evicted = usize::from(embedders.remove(name).is_some());
 
         let mut rerankers = self.rerankers.lock().await;
@@ -165,23 +103,7 @@ impl ModelRegistry {
 
     /// Names of models currently loaded in gateway RAM.
     pub async fn list_loaded(&self) -> Vec<String> {
-        // #region agent log
-        dbg_log(
-            "A",
-            "registry.rs:list_loaded",
-            "waiting for embedders lock (models/status page load)",
-            serde_json::json!({"thread": format!("{:?}", std::thread::current().id())}),
-        );
-        // #endregion
         let embedders = self.embedders.lock().await;
-        // #region agent log
-        dbg_log(
-            "A",
-            "registry.rs:list_loaded",
-            "embedders lock acquired (models/status page proceeding)",
-            serde_json::json!({}),
-        );
-        // #endregion
         let rerankers = self.rerankers.lock().await;
         let mut names: Vec<String> = embedders.keys().cloned().collect();
         for (name, _) in rerankers.keys() {
@@ -214,34 +136,6 @@ impl ModelRegistry {
 fn file_size(path: &std::path::Path) -> u64 {
     std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
-
-// #region agent log
-static LOADS_INFLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
-fn dbg_log(hyp: &str, location: &str, message: &str, data: serde_json::Value) {
-    use std::io::Write;
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let line = serde_json::json!({
-        "sessionId": "a04a75",
-        "runId": "pre-fix",
-        "hypothesisId": hyp,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": ts,
-    });
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/henkelmann/Documents/PRIVAT/henley/.cursor/debug-a04a75.log")
-    {
-        let _ = writeln!(f, "{line}");
-    }
-}
-// #endregion
 
 #[async_trait]
 impl ModelProvider for ModelRegistry {

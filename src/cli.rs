@@ -100,26 +100,7 @@ fn spawn_model_warmup(state: std::sync::Arc<crate::api::router::AppState>) {
         };
 
         let max_len = crate::settings::DEFAULT_RERANK_MAX_LENGTH as usize;
-        // #region agent log
-        {
-            let required_names: Vec<String> = required.iter().cloned().collect();
-            dbg_log(
-                "D",
-                "cli.rs:spawn_model_warmup",
-                "startup warmup begins (will load each required model, holding registry lock)",
-                serde_json::json!({"required": required_names, "count": required.len()}),
-            );
-        }
-        // #endregion
         for name in required {
-            // #region agent log
-            dbg_log(
-                "D",
-                "cli.rs:spawn_model_warmup",
-                "warmup loading model",
-                serde_json::json!({"model": name.as_str()}),
-            );
-            // #endregion
             if is_supported_embed_model(&name) {
                 match state.models.embedder(&name).await {
                     Ok(embedder) => {
@@ -199,32 +180,6 @@ async fn run_daily_backup_if_needed(state: &std::sync::Arc<crate::api::router::A
         Err(err) => tracing::warn!(error = %err, "failed to check daily backup status"),
     }
 }
-
-// #region agent log
-fn dbg_log(hyp: &str, location: &str, message: &str, data: serde_json::Value) {
-    use std::io::Write;
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let line = serde_json::json!({
-        "sessionId": "a04a75",
-        "runId": "pre-fix",
-        "hypothesisId": hyp,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": ts,
-    });
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/henkelmann/Documents/PRIVAT/henley/.cursor/debug-a04a75.log")
-    {
-        let _ = writeln!(f, "{line}");
-    }
-}
-// #endregion
 
 pub async fn doctor(config: Config) -> anyhow::Result<()> {
     config.ensure_directories()?;

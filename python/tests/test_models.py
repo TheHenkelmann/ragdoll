@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -52,3 +53,64 @@ def test_embedder_raises_when_model_missing(worker_config: WorkerConfig) -> None
 
     with pytest.raises(RuntimeError, match="embedding model missing"):
         Embedder(worker_config)
+
+
+def test_ensure_onnx_subdir_symlinks_root_model(tmp_path: Path) -> None:
+    from ragdoll_worker.models import _ensure_onnx_subdir
+
+    model_dir = tmp_path / "custom-model"
+    model_dir.mkdir()
+    (model_dir / "model.onnx").write_bytes(b"onnx")
+
+    _ensure_onnx_subdir(model_dir)
+
+    onnx_path = model_dir / "onnx" / "model.onnx"
+    assert onnx_path.exists()
+    assert onnx_path.is_symlink() or onnx_path.is_file()
+
+
+def test_ensure_onnx_subdir_noop_when_already_present(tmp_path: Path) -> None:
+    from ragdoll_worker.models import _ensure_onnx_subdir
+
+    model_dir = tmp_path / "ready-model"
+    onnx_dir = model_dir / "onnx"
+    onnx_dir.mkdir(parents=True)
+    existing = onnx_dir / "model.onnx"
+    existing.write_bytes(b"existing")
+
+    _ensure_onnx_subdir(model_dir)
+    assert existing.read_bytes() == b"existing"
+
+
+def test_ensure_custom_embedding_model_is_idempotent() -> None:
+    from ragdoll_worker.models import _CUSTOM_MODEL_REGISTERED, _ensure_custom_embedding_model
+
+    name = "org/test-custom-embed"
+    _CUSTOM_MODEL_REGISTERED.discard(name)
+    _ensure_custom_embedding_model(name, 1024)
+    _ensure_custom_embedding_model(name, 1024)
+    assert name in _CUSTOM_MODEL_REGISTERED
+
+
+@patch("ragdoll_worker.models.TextEmbedding")
+@patch("ragdoll_worker.models.Tokenizer")
+@patch("ragdoll_worker.models._native_model_names")
+def test_embedder_applies_e5_document_prefix(
+    mock_native: MagicMock,
+    mock_tokenizer: MagicMock,
+    mock_text_embedding: MagicMock,
+    worker_config: WorkerConfig,
+    tmp_path: Path,
+) -> None:
+    from ragdoll_worker.models import Embedder
+
+    model_dir = worker_config.model_dir_for("intfloat/multilingual-e5-large")
+    _write_model_files(model_dir)
+    mock_native.return_value = frozenset({"intfloat/multilingual-e5-large"})
+    embed_instance = MagicMock()
+    mock_text_embedding.return_value = embed_instance
+
+    embedder = Embedder(worker_config, model_name="intfloat/multilingual-e5-large")
+    list(embedder.embed(["hello world"]))
+
+    embed_instance.embed.assert_called_once_with(["passage: hello world"])

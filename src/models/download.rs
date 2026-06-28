@@ -347,9 +347,6 @@ async fn run_download_job(
     let _ = tx.send(ModelDownloadEvent::Testing { name: name.clone() });
 
     let max_len = crate::settings::DEFAULT_RERANK_MAX_LENGTH as usize;
-    // #region agent log
-    dbg_log("B", "download.rs:run_download_job", "download finished -> calling test_model_inference (will load model into registry, holds registry lock)", serde_json::json!({"model": name, "thread": format!("{:?}", std::thread::current().id())}));
-    // #endregion
     match test_model_inference(&models, &name, max_len).await {
         Ok(latency_ms) => {
             let _ = tx.send(ModelDownloadEvent::Complete { name, latency_ms });
@@ -464,32 +461,6 @@ async fn fetch_expected_download_size(model_name: &str) -> Option<u64> {
 
     (total > 0).then_some(total)
 }
-
-// #region agent log
-fn dbg_log(hyp: &str, location: &str, message: &str, data: serde_json::Value) {
-    use std::io::Write;
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let line = serde_json::json!({
-        "sessionId": "a04a75",
-        "runId": "pre-fix",
-        "hypothesisId": hyp,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": ts,
-    });
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/henkelmann/Documents/PRIVAT/henley/.cursor/debug-a04a75.log")
-    {
-        let _ = writeln!(f, "{line}");
-    }
-}
-// #endregion
 
 fn progress_message(downloaded: u64, total: Option<u64>) -> String {
     match total {

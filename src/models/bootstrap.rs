@@ -345,14 +345,6 @@ pub fn ensure_preset_cache_present(config: &Config, model_name: &str) -> Result<
         return Ok(());
     }
     if find_fastembed_snapshot(&config.model_cache_dir, model_name).is_some() {
-        // #region agent log
-        dbg_log(
-            "G",
-            "bootstrap.rs:ensure_preset_cache_present",
-            "preset cache present, no download needed",
-            serde_json::json!({ "model": model_name }),
-        );
-        // #endregion
         return Ok(());
     }
     if config.hf_hub_offline {
@@ -363,54 +355,11 @@ pub fn ensure_preset_cache_present(config: &Config, model_name: &str) -> Result<
         model = model_name,
         "preset load cache missing; repopulating via download before load"
     );
-    // #region agent log
-    dbg_log(
-        "G",
-        "bootstrap.rs:ensure_preset_cache_present",
-        "preset cache MISSING; repopulating via bootstrap_download",
-        serde_json::json!({ "model": model_name }),
-    );
-    // #endregion
     let never_cancel = AtomicBool::new(false);
     let dir = config.model_dir_for(model_name);
     std::fs::create_dir_all(&dir).with_context(|| format!("create model dir {}", dir.display()))?;
-    let result = bootstrap_download(config, model_name, &dir, &never_cancel, None, None);
-    // #region agent log
-    dbg_log(
-        "G",
-        "bootstrap.rs:ensure_preset_cache_present",
-        "repopulate download finished",
-        serde_json::json!({ "model": model_name, "ok": result.is_ok(), "err": result.as_ref().err().map(|e| e.to_string()) }),
-    );
-    // #endregion
-    result
+    bootstrap_download(config, model_name, &dir, &never_cancel, None, None)
 }
-
-// #region agent log
-fn dbg_log(hyp: &str, location: &str, message: &str, data: serde_json::Value) {
-    use std::io::Write;
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let line = serde_json::json!({
-        "sessionId": "a04a75",
-        "runId": "post-fix",
-        "hypothesisId": hyp,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": ts,
-    });
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/henkelmann/Documents/PRIVAT/henley/.cursor/debug-a04a75.log")
-    {
-        let _ = writeln!(f, "{line}");
-    }
-}
-// #endregion
 
 fn is_user_defined_model(model_name: &str) -> bool {
     find_catalog_entry(model_name).is_some_and(|e| e.load_strategy == LoadStrategy::UserDefined)
