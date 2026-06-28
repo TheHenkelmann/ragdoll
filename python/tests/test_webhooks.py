@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import urllib.error
 import uuid
 from io import BytesIO
 from unittest.mock import MagicMock, patch
-
-import pytest
-import urllib.error
 
 from ragdoll_worker.webhooks import dispatch_ingest_webhooks
 
@@ -87,7 +85,9 @@ def test_dispatch_delivers_completed_event(mock_urlopen: MagicMock, worker_db) -
 
 
 @patch("ragdoll_worker.webhooks.urllib.request.urlopen")
-def test_dispatch_uses_failed_event_for_non_completed_status(mock_urlopen: MagicMock, worker_db) -> None:
+def test_dispatch_uses_failed_event_for_non_completed_status(
+    mock_urlopen: MagicMock, worker_db
+) -> None:
     webhook_id = _insert_webhook(worker_db.conn, events=["failed"])
     response = MagicMock()
     response.__enter__ = MagicMock(return_value=response)

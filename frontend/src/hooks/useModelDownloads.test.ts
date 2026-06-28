@@ -7,6 +7,7 @@ describe("applyDownloadEvent", () => {
   it("maps progress events to percentage and byte counters", () => {
     const next = applyDownloadEvent({ status: "idle" }, {
       event: "progress",
+      name: "BAAI/bge-m3",
       bytes: 50,
       total: 100,
       message: "Downloading…",
@@ -20,6 +21,7 @@ describe("applyDownloadEvent", () => {
   it("caps progress below 100 until complete", () => {
     const next = applyDownloadEvent({ status: "downloading" }, {
       event: "progress",
+      name: "BAAI/bge-m3",
       bytes: 999,
       total: 1000,
       message: "Almost done",
@@ -30,6 +32,7 @@ describe("applyDownloadEvent", () => {
   it("marks complete with latency message", () => {
     const next = applyDownloadEvent({ status: "testing" }, {
       event: "complete",
+      name: "BAAI/bge-m3",
       latency_ms: 42,
     });
     expect(next.status).toBe("ready");
@@ -39,17 +42,23 @@ describe("applyDownloadEvent", () => {
   it("preserves cancellable flag from cancellable events", () => {
     const next = applyDownloadEvent(
       { status: "downloading", cancellable: false },
-      { event: "cancellable", cancellable: true },
+      { event: "cancellable", name: "BAAI/bge-m3", cancellable: true },
     );
     expect(next.cancellable).toBe(true);
   });
 
   it("maps error and cancelled terminal states", () => {
     expect(
-      applyDownloadEvent({ status: "downloading" }, { event: "error", message: "boom" }).status,
+      applyDownloadEvent(
+        { status: "downloading" },
+        { event: "error", name: "BAAI/bge-m3", message: "boom" },
+      ).status,
     ).toBe("error");
     expect(
-      applyDownloadEvent({ status: "downloading" }, { event: "cancelled" }).status,
+      applyDownloadEvent(
+        { status: "downloading" },
+        { event: "cancelled", name: "BAAI/bge-m3" },
+      ).status,
     ).toBe("cancelled");
   });
 });

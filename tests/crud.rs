@@ -396,8 +396,7 @@ async fn unknown_release_returns_not_found() {
 async fn backup_create_list_and_delete() {
     let app = setup_test_app().await;
 
-    let (status, list) =
-        json_request(&app, "GET", "/api/v1/backups", None, Some(&app.token)).await;
+    let (status, list) = json_request(&app, "GET", "/api/v1/backups", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(list["backups"].is_array());
 
@@ -411,13 +410,11 @@ async fn backup_create_list_and_delete() {
     let (status, list_after) =
         json_request(&app, "GET", "/api/v1/backups", None, Some(&app.token)).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        list_after["backups"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|b| b["file_name"] == file_name)
-    );
+    assert!(list_after["backups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|b| b["file_name"] == file_name));
 
     let (status, deleted) = json_request(
         &app,
