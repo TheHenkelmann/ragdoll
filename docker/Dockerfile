@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.88-trixie AS rust-builder
+FROM rust:1.97-trixie AS rust-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
