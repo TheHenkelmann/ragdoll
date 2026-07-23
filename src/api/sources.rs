@@ -222,7 +222,7 @@ async fn create_source_internal(
                 .staging_dir
                 .join(format!("{proposed_source_id}{ext}"));
             std::fs::write(&staging_path, &bytes)?;
-            let hash = format!("{:x}", Sha256::digest(&bytes));
+            let hash = hex::encode(Sha256::digest(&bytes));
             (
                 Some(staging_path.to_string_lossy().to_string()),
                 Some(hash),
@@ -347,7 +347,7 @@ async fn apply_dedup_policy(
 }
 
 fn hash_text(text: &str) -> String {
-    format!("{:x}", Sha256::digest(text.as_bytes()))
+    hex::encode(Sha256::digest(text.as_bytes()))
 }
 
 #[cfg(test)]

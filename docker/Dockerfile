@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM rust:1.88-trixie AS rust-builder
+FROM rust:1.97-trixie AS rust-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
@@ -10,7 +10,7 @@ COPY src ./src
 COPY migrations ./migrations
 RUN cargo build --release
 
-FROM node:22-bookworm AS frontend-builder
+FROM node:24-bookworm AS frontend-builder
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install
