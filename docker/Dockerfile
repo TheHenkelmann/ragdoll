@@ -10,7 +10,7 @@ COPY src ./src
 COPY migrations ./migrations
 RUN cargo build --release
 
-FROM node:22-bookworm AS frontend-builder
+FROM node:24-bookworm AS frontend-builder
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm install
