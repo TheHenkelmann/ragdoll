@@ -203,7 +203,7 @@ async fn post_replace_targets_existing_source_without_deleting() {
     support::seed_demo_chunk(&app.state).await;
     let source_id = "00000000-0000-0000-0000-000000000099";
     let content = "Ragdoll is a local RAG pipeline for retrieval.";
-    let content_hash = format!("{:x}", Sha256::digest(content.as_bytes()));
+    let content_hash = hex::encode(Sha256::digest(content.as_bytes()));
 
     let conn = app.state.pool.connect_one().await.unwrap();
     conn.execute(

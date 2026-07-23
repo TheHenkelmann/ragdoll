@@ -7,6 +7,7 @@ ignore = [
     { id = "RUSTSEC-2026-0098", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
     { id = "RUSTSEC-2026-0099", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
     { id = "RUSTSEC-2026-0104", reason = "transitive rustls-webpki 0.102 via libsql remote; local SQLite only" },
+    { id = "RUSTSEC-2023-0071", reason = "transitive rsa via jsonwebtoken rust_crypto; JWT auth uses HMAC secrets only, never RSA keys" },
 ]
 
 [licenses]
