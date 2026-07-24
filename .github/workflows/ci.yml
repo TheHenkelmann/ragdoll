@@ -27,7 +27,7 @@ jobs:
       - run: cargo install cargo-llvm-cov --locked
       - run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info --ignore-filename-regex '(main\.rs|models/(embed|rerank)\.rs)'
       - run: cargo test
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
@@ -50,7 +50,7 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: python/coverage.xml
@@ -73,7 +73,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:coverage
       - run: npm run build
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: frontend/coverage/lcov.info
