@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # jsonwebtoken 11 requires base64 ^0.22
+      - dependency-name: "base64"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: pip
     directory: /python
     schedule:
