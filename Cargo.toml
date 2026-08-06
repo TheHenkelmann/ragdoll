@@ -23,7 +23,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "multipart"] }
 base64 = "0.22"
 chacha20poly1305 = "0.10"
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 fastembed = "5.13"
 futures-util = "0.3"
 genai = "0.6"
