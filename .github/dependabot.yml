@@ -12,6 +12,9 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -20,3 +23,6 @@ updates:
     directory: /docker
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
