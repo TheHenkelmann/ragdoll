@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 
-use crate::crypto::Crypto;
+use crate::crypto::{load_credential_key, Crypto};
 use crate::db::DbPool;
 use crate::generation::prompt::resolve_generation_params;
 use crate::generation::types::{GenerationRequest, ResolvedGenerationSpec};
@@ -84,29 +84,6 @@ async fn load_model_by_tag(
         .await?
         .ok_or_else(|| anyhow!("llm model not found: {tag}"))?;
     read_model_row(row)
-}
-
-async fn load_credential_key(
-    conn: &libsql::Connection,
-    crypto: &Crypto,
-    credential_id: &str,
-    release_id: &str,
-) -> Result<String> {
-    let mut rows = conn
-        .query(
-            "SELECT nonce, ciphertext FROM llm_credentials WHERE id = ?1 AND release_id = ?2",
-            (credential_id, release_id),
-        )
-        .await?;
-    let row = rows
-        .next()
-        .await?
-        .ok_or_else(|| anyhow!("llm credential not found"))?;
-    let nonce: String = row.get(0)?;
-    let ciphertext: String = row.get(1)?;
-    crypto
-        .decrypt(&nonce, &ciphertext)
-        .context("decrypt llm credential")
 }
 
 fn read_model_row(row: libsql::Row) -> Result<LlmModelRow> {

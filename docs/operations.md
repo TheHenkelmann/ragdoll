@@ -94,6 +94,10 @@ Set `"safety_backup": true` to create a manual snapshot of the current database 
 
 Manual file restore (e.g. when the server is stopped):
 
+The restored database contains the wrapped DEK. After restore, start Ragdoll with a
+`RAGDOLL_SECRET` that can unwrap it (the secret used when the backup was taken), or
+set `RAGDOLL_SECRET_OLD` to that previous secret for one restart to rewrap.
+
 1. Stop the Ragdoll container/process.
 2. Replace `${RAGDOLL_DATA_DIR}/db/ragdoll.db` with the chosen snapshot.
 3. Remove any leftover `ragdoll.db-wal` and `ragdoll.db-shm` files in the same directory.
@@ -117,7 +121,8 @@ uses **your** external LLM credentials — Ragdoll never ships with a hosted LLM
 Setup (requires `llm_credentials:write` and `llm_models:write`, or superadmin):
 
 1. **Credentials** — `POST /api/v1/releases/{tag}/llm_credentials` stores provider API keys
-   encrypted at rest. Keys are write-only and never returned via the API.
+   encrypted at rest with envelope encryption (random DEK wrapped by a KEK derived from
+   `RAGDOLL_SECRET`). Keys are write-only and never returned via the API.
 2. **Models** — `POST /api/v1/releases/{tag}/llm_models` defines taggable LLM configs
    (provider, model name, optional custom endpoint, system prompt, defaults). Each
    model can be connectivity-tested via `POST /api/v1/releases/{tag}/llm_models/{model_tag}/test`, which
@@ -128,6 +133,22 @@ Setup (requires `llm_credentials:write` and `llm_models:write`, or superadmin):
 
 Manage credentials and models per release in the UI under **LLM Models** (release
 sidebar). Configure `generation_allowed` under **Settings**.
+
+### Rotate master secret
+
+LLM credentials use envelope encryption: a random DEK encrypts keys; `RAGDOLL_SECRET`
+wraps that DEK. To rotate without re-entering provider keys:
+
+```bash
+export RAGDOLL_SECRET_OLD="<previous-secret>"
+export RAGDOLL_SECRET="<new-secret>"
+# restart once — DEK is rewrapped
+unset RAGDOLL_SECRET_OLD
+# restart again
+```
+
+JWTs signed with the old secret stop working immediately; users and API clients must
+obtain new tokens. See [configuration.md](configuration.md).
 
 Supported providers: `openai`, `openai_compat`, `azure`, `anthropic`, `gemini`,
 `vertex`, `groq`, `deepseek`, `xai` (via the [`genai`](https://crates.io/crates/genai) crate).

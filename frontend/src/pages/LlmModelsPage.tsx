@@ -758,13 +758,20 @@ export function LlmModelsPage() {
         </p>
         {status?.is_superadmin && (
           <p className="text-sm text-[var(--muted)]">
-            If you change the{" "}
+            Rotating{" "}
             <code className="rounded px-1" style={{ background: "var(--selected)" }}>
               RAGDOLL_SECRET
             </code>{" "}
-            environment variable, stored credentials can no longer be decrypted and must be
-            re-entered. Query requests with generation enabled will stop working immediately until
-            credentials are updated.
+            invalidates session and API-key JWTs (users must sign in again). Stored LLM credentials
+            stay decryptable: restart once with{" "}
+            <code className="rounded px-1" style={{ background: "var(--selected)" }}>
+              RAGDOLL_SECRET_OLD
+            </code>{" "}
+            set to the previous secret so the data-encryption key can be rewrapped, then remove{" "}
+            <code className="rounded px-1" style={{ background: "var(--selected)" }}>
+              RAGDOLL_SECRET_OLD
+            </code>
+            .
           </p>
         )}
       </div>

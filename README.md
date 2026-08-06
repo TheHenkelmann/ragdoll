@@ -112,7 +112,7 @@ Ragdoll is a **single-replica** container with persistent `/data` storage. See [
 
 Image: `ghcr.io/thehenkelmann/ragdoll:latest`
 
-**Master secret:** Cloud deploy templates generate a **random `RAGDOLL_SECRET` automatically**. It is not saved or shown to you after deploy. To use your own stable secret, set `export RAGDOLL_SECRET=...` before running a deploy script, or fill in the optional override parameter in Azure/AWS portal forms (parameter name: `secretOverride` / `SecretOverride`).
+**Master secret:** Cloud deploy templates generate a **random `RAGDOLL_SECRET` automatically**. It is not saved or shown to you after deploy. To use your own stable secret, set `export RAGDOLL_SECRET=...` before running a deploy script, or fill in the optional override parameter in Azure/AWS portal forms (parameter name: `secretOverride` / `SecretOverride`). LLM credentials use envelope encryption: rotating the secret keeps stored keys if you restart once with `RAGDOLL_SECRET_OLD` set to the previous value (see [deploy/README.md](deploy/README.md) and [docs/configuration.md](docs/configuration.md)).
 
 ### Serverless (max 1 instance)
 

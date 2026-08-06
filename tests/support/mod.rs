@@ -194,10 +194,7 @@ pub async fn seed_demo_chunk(state: &AppState) {
 }
 
 pub async fn seed_llm_setup(app: &TestApp, release_id: &str) -> (String, String) {
-    use ragdoll::crypto::Crypto;
-
-    let crypto = Crypto::from_secret(&app.state.config.secret).unwrap();
-    let (nonce, ciphertext) = crypto.encrypt("sk-test").unwrap();
+    let (nonce, ciphertext) = app.state.crypto.encrypt("sk-test").unwrap();
     let cred_id = uuid::Uuid::new_v4().to_string();
     let model_id = uuid::Uuid::new_v4().to_string();
 

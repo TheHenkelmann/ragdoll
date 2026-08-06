@@ -292,7 +292,7 @@ pub async fn build_state_with_provider(
         pool: pool.clone(),
         models,
     };
-    let crypto = Crypto::from_secret(&config.secret)?;
+    let crypto = Crypto::bootstrap(&pool, &config.secret, config.secret_old.as_deref()).await?;
     let model_download_max_concurrent = config.model_download_max_concurrent;
 
     Ok(Arc::new(AppState {

@@ -7,9 +7,28 @@ All environment variables use the `RAGDOLL_` prefix.
 | Variable | Description |
 |---|---|
 | `RAGDOLL_DATA_DIR` | Root data directory |
-| `RAGDOLL_SECRET` | Master secret for JWT signing and encrypted LLM credential storage |
+| `RAGDOLL_SECRET` | Master secret for JWT signing and as KEK for envelope-encrypted LLM credentials |
 
-Cloud deploy templates ([deploy/README.md](../deploy/README.md)) generate a random secret automatically if you do not override it. That value is **not stored or displayed** for you. Set `RAGDOLL_SECRET` yourself before deploy for a stable production secret. Rotating the secret invalidates existing tokens **and** makes stored LLM API keys undecryptable.
+## Optional (secret rotation)
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAGDOLL_SECRET_OLD` | _(unset)_ | Previous `RAGDOLL_SECRET` for **one restart** after rotation; rewraps the data-encryption key (DEK). Remove after a successful start. |
+
+Cloud deploy templates ([deploy/README.md](../deploy/README.md)) generate a random secret automatically if you do not override it. That value is **not stored or displayed** for you. Set `RAGDOLL_SECRET` yourself before deploy for a stable production secret.
+
+**Envelope encryption:** LLM credentials are encrypted with a random DEK stored wrapped in the database. `RAGDOLL_SECRET` derives the KEK that wraps that DEK. Rotating the secret invalidates existing JWTs (users must sign in again) but **preserves credentials** when you restart once with `RAGDOLL_SECRET_OLD` set to the previous value.
+
+### Rotate the master secret
+
+```bash
+export RAGDOLL_SECRET_OLD="<previous-secret>"
+export RAGDOLL_SECRET="<new-secret>"
+# restart the container — DEK is rewrapped
+# then unset RAGDOLL_SECRET_OLD and restart again
+```
+
+Restoring a database backup requires a secret that can unwrap the DEK in that snapshot (current secret, or rotate via `RAGDOLL_SECRET_OLD`).
 
 Derived paths unless overridden:
 

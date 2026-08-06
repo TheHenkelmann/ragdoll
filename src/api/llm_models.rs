@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::api::error::ApiError;
 use crate::api::router::AppState;
 use crate::auth::{authorize, AuthContext, Permission};
-use crate::crypto::Crypto;
+use crate::crypto::load_credential_key;
 use crate::generation::types::{ResolvedGenerationSpec, DEFAULT_TEMPERATURE};
 use crate::release::{NestedPathModelTag, ReleaseCtx};
 
@@ -161,7 +161,15 @@ pub async fn test_llm_model(
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let api_key = if let Some(cred_id) = &model.credential_id {
-        load_credential_key(&conn, &state.crypto, cred_id, &ctx.release_id).await?
+        load_credential_key(&conn, &state.crypto, cred_id, &ctx.release_id)
+            .await
+            .map_err(|e| {
+                if e.to_string().contains("not found") {
+                    ApiError::not_found("llm credential not found")
+                } else {
+                    ApiError::internal(e.to_string())
+                }
+            })?
     } else {
         String::new()
     };
@@ -194,31 +202,6 @@ pub async fn test_llm_model(
             completion_tokens: None,
         })),
     }
-}
-
-async fn load_credential_key(
-    conn: &libsql::Connection,
-    crypto: &Crypto,
-    credential_id: &str,
-    release_id: &str,
-) -> Result<String, ApiError> {
-    let mut rows = conn
-        .query(
-            "SELECT nonce, ciphertext FROM llm_credentials WHERE id = ?1 AND release_id = ?2",
-            (credential_id, release_id),
-        )
-        .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
-    let row = rows
-        .next()
-        .await
-        .map_err(|e| ApiError::internal(e.to_string()))?
-        .ok_or_else(|| ApiError::not_found("llm credential not found"))?;
-    let nonce: String = row.get(0).map_err(|e| ApiError::internal(e.to_string()))?;
-    let ciphertext: String = row.get(1).map_err(|e| ApiError::internal(e.to_string()))?;
-    crypto
-        .decrypt(&nonce, &ciphertext)
-        .map_err(|e| ApiError::internal(e.to_string()))
 }
 
 fn validate_model_body(body: &UpsertLlmModelRequest) -> Result<(), ApiError> {

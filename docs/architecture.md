@@ -81,7 +81,8 @@ Bootstrap seeds release `first-release`, stage `prod`, and default settings.
 - **Dim-1024 ONNX whitelist** only ([models.md](models.md)).
 - **Batch endpoints** with multi-status responses.
 - **Filter DSL** in JSON body or query param (base64url on GET/DELETE).
-- **Master secret** (`RAGDOLL_SECRET`) for JWT signing and LLM credential encryption.
+- **Master secret** (`RAGDOLL_SECRET`) for JWT signing and as KEK wrapping the
+  instance DEK used for LLM credential encryption (envelope encryption).
 
 ## Related
 

@@ -23,6 +23,8 @@ pub struct Config {
     pub job_lease_seconds: u64,
     pub max_attempts: u32,
     pub secret: String,
+    /// Previous master secret for one-time DEK rewrap after rotation.
+    pub secret_old: Option<String>,
     pub superadmin_email: String,
     pub superadmin_password: Option<String>,
     pub backup_dir: PathBuf,
@@ -59,6 +61,10 @@ impl Config {
             .unwrap_or_else(|_| PathBuf::from("frontend/dist"));
 
         let secret = std::env::var("RAGDOLL_SECRET").context("RAGDOLL_SECRET is required")?;
+        let secret_old = std::env::var("RAGDOLL_SECRET_OLD")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
         Ok(Self {
             data_dir: data_dir.clone(),
@@ -105,6 +111,7 @@ impl Config {
                 .parse()
                 .context("invalid RAGDOLL_MAX_ATTEMPTS")?,
             secret,
+            secret_old,
             superadmin_email: std::env::var("RAGDOLL_SUPERADMIN_EMAIL")
                 .unwrap_or_else(|_| "admin@ragdoll.ai".to_string()),
             superadmin_password: std::env::var("RAGDOLL_SUPERADMIN_PW").ok(),
@@ -158,6 +165,7 @@ impl Config {
             job_lease_seconds: 300,
             max_attempts: 3,
             secret,
+            secret_old: None,
             superadmin_email: "admin@ragdoll.ai".to_string(),
             superadmin_password: Some("admin".to_string()),
             backup_dir: data_dir.join("backups"),

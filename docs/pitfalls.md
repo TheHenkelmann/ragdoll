@@ -60,12 +60,18 @@ re-ingest the affected sources:
 
 - **Cloud deploy uses an auto-generated secret by default.** One-click deploy
   templates set a random `RAGDOLL_SECRET` that is **not saved or shown to you**.
-  Redeploying without overriding it invalidates existing tokens **and** makes
-  stored LLM credentials undecryptable. Set `RAGDOLL_SECRET` before deploy for
-  production. → [deploy/README.md](../deploy/README.md)
-- **Rotating `RAGDOLL_SECRET` invalidates encrypted LLM credentials.** You must
-  re-enter provider API keys after a secret change. →
-  [configuration.md](configuration.md)
+  Redeploying without overriding it invalidates existing JWTs. Stored LLM
+  credentials use envelope encryption: if the new secret cannot unwrap the DEK,
+  set `RAGDOLL_SECRET_OLD` to the previous secret for one restart, then remove it.
+  Set `RAGDOLL_SECRET` before deploy for production. → [deploy/README.md](../deploy/README.md)
+- **Rotating `RAGDOLL_SECRET` invalidates JWTs, not credentials (when done correctly).**
+  Restart once with `RAGDOLL_SECRET_OLD=<previous>` so the DEK can be rewrapped;
+  then drop `RAGDOLL_SECRET_OLD`. Users must sign in again. Losing the secret
+  without `RAGDOLL_SECRET_OLD` (and without a backup tied to a known secret)
+  makes credentials undecryptable. → [configuration.md](configuration.md)
+- **Restoring a backup requires a matching secret.** The wrapped DEK lives in the
+  DB snapshot. Use the secret that wrapped it, or rotate via `RAGDOLL_SECRET_OLD`.
+  → [operations.md → Backup & Restore](operations.md#backup--restore)
 - **Reset the DB after schema/seed changes.** After editing
   `migrations/0001_init.sql`, delete `${RAGDOLL_DATA_DIR}/db` and let migrations
   re-run, otherwise you get migration mismatches. →

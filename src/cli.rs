@@ -191,6 +191,18 @@ pub async fn doctor(config: Config) -> anyhow::Result<()> {
     );
     println!("RAGDOLL_STAGING_DIR={}", config.staging_dir.display());
     println!("RAGDOLL_EMBEDDING_DIM={}", config.embedding_dim);
+
+    if config.db_path.is_file() {
+        let pool = DbPool::connect(&config).await?;
+        match crate::crypto::Crypto::bootstrap(&pool, &config.secret, config.secret_old.as_deref())
+            .await
+        {
+            Ok(_) => println!("credential_encryption=envelope-v1 (DEK unwrap OK)"),
+            Err(err) => println!("credential_encryption=ERROR ({err})"),
+        }
+    } else {
+        println!("credential_encryption=no database yet");
+    }
     Ok(())
 }
 
