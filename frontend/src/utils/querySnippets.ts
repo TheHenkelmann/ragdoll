@@ -60,8 +60,8 @@ export function buildSnippets(
   const curl = `# Replace with a real API key
 API_KEY="your-api-key-here"
 
+# ${urlComment}
 curl -sS -X POST '${releaseUrl}' \\
-  # ${urlComment}
   -H "Authorization: Bearer $API_KEY" \\
   -H 'Content-Type: application/json' \\
   -d '${JSON.stringify(queryBody)}'`;
