@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use anyhow::{anyhow, Context, Result};
-use argon2::password_hash::rand_core::RngCore;
+use argon2::password_hash::rand_core::{OsRng, RngCore};
 use base64::{
     engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD as BASE64URL},
     Engine as _,
 };
-use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
-use chacha20poly1305::{AeadCore, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::aead::{Aead, Generate, KeyInit};
+use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
@@ -180,7 +180,7 @@ fn unwrap_dek(kek: &[u8; 32], nonce_b64: &str, ciphertext_b64: &str) -> Result<[
 
 fn encrypt_with_key(key: &[u8; 32], plaintext: &str) -> Result<(String, String)> {
     let cipher = XChaCha20Poly1305::new_from_slice(key).context("init cipher")?;
-    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let nonce = XNonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext.as_bytes())
         .map_err(|e| anyhow!("encrypt: {e}"))?;
@@ -190,10 +190,10 @@ fn encrypt_with_key(key: &[u8; 32], plaintext: &str) -> Result<(String, String)>
 fn decrypt_with_key(key: &[u8; 32], nonce_b64: &str, ciphertext_b64: &str) -> Result<String> {
     let cipher = XChaCha20Poly1305::new_from_slice(key).context("init cipher")?;
     let nonce_bytes = BASE64.decode(nonce_b64).context("decode nonce")?;
-    let nonce = XNonce::from_slice(&nonce_bytes);
+    let nonce = XNonce::try_from(nonce_bytes.as_slice()).map_err(|_| anyhow!("invalid nonce"))?;
     let ciphertext = BASE64.decode(ciphertext_b64).context("decode ciphertext")?;
     let plaintext = cipher
-        .decrypt(nonce, ciphertext.as_ref())
+        .decrypt(&nonce, ciphertext.as_ref())
         .map_err(|e| anyhow!("decrypt: {e}"))?;
     String::from_utf8(plaintext).context("plaintext is not utf-8")
 }

@@ -74,8 +74,10 @@ pub fn encode_api_key_token(
 }
 
 pub fn verify_token(secret: &str, token: &str) -> anyhow::Result<AuthClaims> {
-    let mut validation = Validation::default();
-    validation.validate_exp = false;
+    let mut validation = Validation {
+        validate_exp: false,
+        ..Validation::default()
+    };
     validation.required_spec_claims.remove("exp");
     let data = decode::<AuthClaims>(
         token,
